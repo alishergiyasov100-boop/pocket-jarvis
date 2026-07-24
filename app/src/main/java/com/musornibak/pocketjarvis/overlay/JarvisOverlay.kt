@@ -8,10 +8,15 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,11 +26,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 enum class JarvisState { Idle, Listening, Thinking, Speaking }
@@ -38,18 +48,19 @@ fun JarvisOverlay(
     inputText: String,
     onInputChange: (String) -> Unit,
     onInputSubmit: () -> Unit,
+    onMicPress: () -> Unit = {},
 ) {
     val expanded = state == JarvisState.Speaking || inputMode || transcript.isNotEmpty()
 
     val targetW = when {
         expanded -> 340.dp
         state == JarvisState.Idle -> 124.dp
-        else -> 110.dp
+        else -> 118.dp
     }
     val targetH = when {
         expanded -> if (inputMode) 210.dp else 190.dp
         state == JarvisState.Idle -> 36.dp
-        else -> 110.dp
+        else -> 118.dp
     }
     val targetCorner = when {
         expanded -> 34.dp
@@ -62,6 +73,11 @@ fun JarvisOverlay(
     val h by animateDpAsState(targetH, morph, label = "h")
     val corner by animateDpAsState(targetCorner, morph, label = "c")
 
+    // ─── физика: drag + throw + spring-back к якорю (top-center) ──────────
+    val offsetAnim = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    val scope = rememberCoroutineScope()
+    var slosh by remember { mutableStateOf(Offset.Zero) }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -70,15 +86,64 @@ fun JarvisOverlay(
     ) {
         Box(
             modifier = Modifier
+                .offset {
+                    IntOffset(
+                        offsetAnim.value.x.roundToInt(),
+                        offsetAnim.value.y.roundToInt(),
+                    )
+                }
                 .width(w)
                 .height(h)
                 .clip(RoundedCornerShape(corner))
-                .background(Color(0xFF0A0A0A)),
+                .background(Color(0xFF0A0A0A))
+                .pointerInput(Unit) {
+                    val decay = splineBasedDecay<Offset>(this)
+                    val tracker = VelocityTracker()
+                    detectDragGestures(
+                        onDragStart = {
+                            tracker.resetTracking()
+                            scope.launch { offsetAnim.stop() }
+                        },
+                        onDrag = { change, drag ->
+                            change.consume()
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            scope.launch {
+                                offsetAnim.snapTo(offsetAnim.value + drag)
+                            }
+                            // жидкость отстаёт от контейнера — inertia
+                            slosh = -drag * 0.35f
+                        },
+                        onDragEnd = {
+                            val v = tracker.calculateVelocity()
+                            val throwVel = Offset(v.x, v.y)
+                            slosh = Offset.Zero
+                            scope.launch {
+                                // бросок с натуральным замедлением
+                                offsetAnim.animateDecay(throwVel, decay)
+                                // затем пружина обратно к Dynamic Island
+                                offsetAnim.animateTo(
+                                    Offset.Zero,
+                                    spring(dampingRatio = 0.6f, stiffness = 180f),
+                                )
+                            }
+                        },
+                        onDragCancel = {
+                            slosh = Offset.Zero
+                            scope.launch {
+                                offsetAnim.animateTo(
+                                    Offset.Zero,
+                                    spring(dampingRatio = 0.6f, stiffness = 180f),
+                                )
+                            }
+                        },
+                    )
+                },
         ) {
             if (state != JarvisState.Idle) {
                 MetaballLayer(
                     modifier = Modifier.fillMaxSize(),
-                    intense = state == JarvisState.Speaking || state == JarvisState.Listening,
+                    intense = state == JarvisState.Speaking || state == JarvisState.Thinking,
+                    slosh = slosh,
                 )
             }
 
@@ -86,46 +151,55 @@ fun JarvisOverlay(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                when {
-                    expanded -> ExpandedContent(
+                if (expanded) {
+                    ExpandedContent(
                         transcript = transcript,
                         inputMode = inputMode,
                         inputText = inputText,
                         onInputChange = onInputChange,
                         onInputSubmit = onInputSubmit,
+                        onMicPress = onMicPress,
                     )
-                    state == JarvisState.Thinking -> ThreeDots()
-                    else -> Unit
                 }
+                // Idle / Listening / Thinking: только шар (без dots)
             }
         }
     }
 }
 
 /**
- * Настоящий metaball: несколько «капель» блюрятся через RenderEffect, потом
- * alpha-threshold через ColorMatrix — края бинаризуются, капли сливаются в
- * жидкость (классический CSS gooey-effect трюк, но нативно через RenderNode).
+ * Настоящий metaball через RenderEffect: чистый blur + alpha-threshold.
+ * Классический gooey-трюк, но нативно в RenderNode → 60fps.
+ *
+ * `slosh` — offset жидкости внутри контейнера (для inertia при drag/throw).
  */
 @Composable
-private fun MetaballLayer(modifier: Modifier, intense: Boolean) {
+private fun MetaballLayer(modifier: Modifier, intense: Boolean, slosh: Offset) {
     val t = rememberInfiniteTransition(label = "meta")
     val phase by t.animateFloat(
         initialValue = 0f,
         targetValue = (Math.PI * 2).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(if (intense) 3400 else 5600, easing = LinearEasing),
+            animation = tween(if (intense) 3200 else 5400, easing = LinearEasing),
         ),
         label = "phase",
     )
     val breath by t.animateFloat(
         initialValue = 0.86f,
-        targetValue = 1.02f,
+        targetValue = 1.04f,
         animationSpec = infiniteRepeatable(
             animation = tween(1700, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "breath",
+    )
+
+    // сглаживаем slosh чтобы жидкость плавно возвращалась
+    val sloshX by animateFloatAsState(
+        slosh.x, spring(dampingRatio = 0.45f, stiffness = 140f), label = "sx",
+    )
+    val sloshY by animateFloatAsState(
+        slosh.y, spring(dampingRatio = 0.45f, stiffness = 140f), label = "sy",
     )
 
     val gooeyEffect = remember {
@@ -154,12 +228,12 @@ private fun MetaballLayer(modifier: Modifier, intense: Boolean) {
             val cy = size.height / 2f
             val r = minOf(size.width, size.height) / 2f
             val base = r * 0.42f * breath
-            val orbit = r * 0.28f
+            val orbit = r * 0.30f
 
             fun blob(colorIdx: Int, angleOffset: Float, radiusMul: Float, orbitMul: Float) {
                 val a = phase * (0.7f + colorIdx * 0.13f) + angleOffset
-                val ox = cx + cos(a) * orbit * orbitMul
-                val oy = cy + sin(a * 1.3f) * orbit * 0.55f * orbitMul
+                val ox = cx + cos(a) * orbit * orbitMul + sloshX
+                val oy = cy + sin(a * 1.3f) * orbit * 0.55f * orbitMul + sloshY
                 drawCircle(
                     color = paletteCool[colorIdx],
                     radius = base * radiusMul,
@@ -181,10 +255,10 @@ private fun MetaballLayer(modifier: Modifier, intense: Boolean) {
 }
 
 private val paletteCool = listOf(
-    Color(0xFFA9C6FF), // холодный голубой
-    Color(0xFFC7B4FF), // сиреневый
-    Color(0xFFE8EEFF), // белёсый лёд
-    Color(0xFFFFB8D6), // редкий розовый акцент
+    Color(0xFFA9C6FF),
+    Color(0xFFC7B4FF),
+    Color(0xFFE8EEFF),
+    Color(0xFFFFB8D6),
 )
 
 @Composable
@@ -194,11 +268,12 @@ private fun ExpandedContent(
     inputText: String,
     onInputChange: (String) -> Unit,
     onInputSubmit: () -> Unit,
+    onMicPress: () -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 18.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
@@ -249,6 +324,23 @@ private fun ExpandedContent(
                     },
                 )
             }
+            // микрофон
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF1B1B1F))
+                    .clickable { onMicPress() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Mic,
+                    contentDescription = "voice",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            // отправить
             Box(
                 modifier = Modifier
                     .size(34.dp)
@@ -257,38 +349,13 @@ private fun ExpandedContent(
                     .clickable { onInputSubmit() },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    "↑",
-                    style = TextStyle(
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0A0A0A),
-                    )
+                Icon(
+                    imageVector = Icons.Filled.ArrowUpward,
+                    contentDescription = "send",
+                    tint = Color(0xFF0A0A0A),
+                    modifier = Modifier.size(18.dp),
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun ThreeDots() {
-    val t = rememberInfiniteTransition(label = "3d")
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf(0, 160, 320).forEach { delayMs ->
-            val a by t.animateFloat(
-                0.25f, 1f,
-                infiniteRepeatable(
-                    animation = tween(560, delayMillis = delayMs, easing = LinearEasing),
-                    repeatMode = RepeatMode.Reverse,
-                ),
-                label = "d$delayMs",
-            )
-            Box(
-                Modifier
-                    .size(7.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(Color.White.copy(alpha = a))
-            )
         }
     }
 }
