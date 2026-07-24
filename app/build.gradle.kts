@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.musornibak.pocketjarvis"
-        minSdk = 29
+        minSdk = 31
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"

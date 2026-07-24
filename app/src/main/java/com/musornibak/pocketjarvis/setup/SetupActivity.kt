@@ -58,6 +58,8 @@ class SetupActivity : ComponentActivity() {
 private fun DemoOverlayHost() {
     var state by remember { mutableStateOf(JarvisState.Idle) }
     var transcript by remember { mutableStateOf("") }
+    var inputMode by remember { mutableStateOf(false) }
+    var inputText by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         val demoLines = listOf(
@@ -66,13 +68,23 @@ private fun DemoOverlayHost() {
             "Discord отрублен от сети. Включить обратно?",
             "Батарея 42%, температура 38°C. В норме.",
         )
+        val demoTyping = "что там с процессором"
         var i = 0
         while (true) {
-            state = JarvisState.Idle; transcript = ""; delay(3000)
-            state = JarvisState.Listening;                 delay(2200)
-            state = JarvisState.Thinking;                  delay(1600)
+            inputMode = false
+            state = JarvisState.Idle; transcript = ""; delay(2400)
+            state = JarvisState.Listening;             delay(1800)
+            state = JarvisState.Thinking;              delay(1300)
             transcript = demoLines[i % demoLines.size]
-            state = JarvisState.Speaking;                  delay(3400)
+            state = JarvisState.Speaking;              delay(3200)
+
+            // фаза текстового ввода
+            transcript = ""; inputMode = true; inputText = ""
+            for (n in 1..demoTyping.length) {
+                inputText = demoTyping.take(n); delay(70)
+            }
+            delay(900)
+            inputText = ""
             i++
         }
     }
@@ -80,9 +92,9 @@ private fun DemoOverlayHost() {
     JarvisOverlay(
         state = state,
         transcript = transcript,
-        inputMode = false,
-        inputText = "",
-        onInputChange = {},
+        inputMode = inputMode,
+        inputText = inputText,
+        onInputChange = { inputText = it },
         onInputSubmit = {},
     )
 }

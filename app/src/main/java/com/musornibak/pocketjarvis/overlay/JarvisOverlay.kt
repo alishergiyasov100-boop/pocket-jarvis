@@ -1,38 +1,35 @@
 package com.musornibak.pocketjarvis.overlay
 
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.RenderEffect
+import android.graphics.Shader
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.cos
+import kotlin.math.sin
 
 enum class JarvisState { Idle, Listening, Thinking, Speaking }
 
-/**
- * Apple Intelligence Siri 2026 стиль.
- * Anchor: TOP-CENTER, у Dynamic Island. Три morph-формы:
- *  - Idle       → узкая чёрная pill (сливается с Island)
- *  - Listening  → круглый orb с внутренним «масляным» радужным blob
- *  - Thinking   → orb + 3 dot pulse внутри
- *  - Speaking   → развёрнутый большой squircle с текстом
- * Все переходы через animateDpAsState / animateFloatAsState (spring).
- */
 @Composable
 fun JarvisOverlay(
     state: JarvisState,
@@ -44,25 +41,26 @@ fun JarvisOverlay(
 ) {
     val expanded = state == JarvisState.Speaking || inputMode || transcript.isNotEmpty()
 
-    val targetW: androidx.compose.ui.unit.Dp = when {
+    val targetW = when {
         expanded -> 340.dp
         state == JarvisState.Idle -> 124.dp
         else -> 110.dp
     }
-    val targetH: androidx.compose.ui.unit.Dp = when {
-        expanded -> if (inputMode) 200.dp else 172.dp
+    val targetH = when {
+        expanded -> if (inputMode) 210.dp else 190.dp
         state == JarvisState.Idle -> 36.dp
         else -> 110.dp
     }
-    val targetCorner: androidx.compose.ui.unit.Dp = when {
+    val targetCorner = when {
         expanded -> 34.dp
         state == JarvisState.Idle -> 20.dp
         else -> 60.dp
     }
 
-    val w by animateDpAsState(targetW, morphSpec(), label = "w")
-    val h by animateDpAsState(targetH, morphSpec(), label = "h")
-    val corner by animateDpAsState(targetCorner, morphSpec(), label = "c")
+    val morph = spring<androidx.compose.ui.unit.Dp>(dampingRatio = 0.55f, stiffness = 220f)
+    val w by animateDpAsState(targetW, morph, label = "w")
+    val h by animateDpAsState(targetH, morph, label = "h")
+    val corner by animateDpAsState(targetCorner, morph, label = "c")
 
     Box(
         modifier = Modifier
@@ -77,15 +75,13 @@ fun JarvisOverlay(
                 .clip(RoundedCornerShape(corner))
                 .background(Color(0xFF0A0A0A)),
         ) {
-            // Внутренний масляный blob виден когда НЕ idle
             if (state != JarvisState.Idle) {
-                OilBlob(
+                MetaballLayer(
                     modifier = Modifier.fillMaxSize(),
-                    intense = state == JarvisState.Speaking,
+                    intense = state == JarvisState.Speaking || state == JarvisState.Listening,
                 )
             }
 
-            // Содержимое поверх
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
@@ -96,14 +92,9 @@ fun JarvisOverlay(
                         inputMode = inputMode,
                         inputText = inputText,
                         onInputChange = onInputChange,
+                        onInputSubmit = onInputSubmit,
                     )
                     state == JarvisState.Thinking -> ThreeDots()
-                    state == JarvisState.Listening -> {
-                        // orb с масляным блобом внутри, ничего сверху
-                    }
-                    state == JarvisState.Idle -> {
-                        // pill без содержимого
-                    }
                     else -> Unit
                 }
             }
@@ -111,72 +102,90 @@ fun JarvisOverlay(
     }
 }
 
-private fun <T> morphSpec(): SpringSpec<T> =
-    spring(dampingRatio = 0.72f, stiffness = 320f)
-
 /**
- * «Масляный» blob — sweepGradient радужный + медленное вращение + лёгкий blur.
- * Ощущение glossy oil-slick как у Siri Apple Intelligence.
+ * Настоящий metaball: несколько «капель» блюрятся через RenderEffect, потом
+ * alpha-threshold через ColorMatrix — края бинаризуются, капли сливаются в
+ * жидкость (классический CSS gooey-effect трюк, но нативно через RenderNode).
  */
 @Composable
-private fun OilBlob(modifier: Modifier = Modifier, intense: Boolean) {
-    val t = rememberInfiniteTransition(label = "oil")
-    val angle by t.animateFloat(
+private fun MetaballLayer(modifier: Modifier, intense: Boolean) {
+    val t = rememberInfiniteTransition(label = "meta")
+    val phase by t.animateFloat(
         initialValue = 0f,
-        targetValue = 360f,
+        targetValue = (Math.PI * 2).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(if (intense) 4200 else 6800, easing = LinearEasing),
+            animation = tween(if (intense) 3400 else 5600, easing = LinearEasing),
         ),
-        label = "angle",
+        label = "phase",
     )
     val breath by t.animateFloat(
-        initialValue = 0.85f,
-        targetValue = 1.0f,
+        initialValue = 0.86f,
+        targetValue = 1.02f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
+            animation = tween(1700, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "breath",
     )
 
+    val gooeyEffect = remember {
+        val m = ColorMatrix(
+            floatArrayOf(
+                1f, 0f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f, 0f,
+                0f, 0f, 1f, 0f, 0f,
+                0f, 0f, 0f, 22f, -8f * 255f,
+            )
+        )
+        val filter = ColorMatrixColorFilter(m)
+        RenderEffect.createChainEffect(
+            RenderEffect.createColorFilterEffect(filter),
+            RenderEffect.createBlurEffect(26f, 26f, Shader.TileMode.DECAL),
+        ).asComposeRenderEffect()
+    }
+
     Box(
         modifier = modifier
-            .padding(6.dp)
-            .clip(RoundedCornerShape(50))
-            .blur(2.dp),
+            .padding(4.dp)
+            .graphicsLayer { renderEffect = gooeyEffect },
     ) {
-        Canvas(modifier = Modifier.fillMaxSize().rotate(angle)) {
-            drawRect(
-                brush = Brush.sweepGradient(
-                    colors = listOf(
-                        Color(0xFFFF3B30), // red
-                        Color(0xFFFF9500), // orange
-                        Color(0xFFFFCC00), // yellow
-                        Color(0xFF34C759), // green
-                        Color(0xFF00C7BE), // teal
-                        Color(0xFF007AFF), // blue
-                        Color(0xFFAF52DE), // purple
-                        Color(0xFFFF2D55), // pink
-                        Color(0xFFFF3B30), // wrap
-                    ),
-                    center = Offset(size.width / 2f * breath, size.height / 2f),
-                ),
-                alpha = 0.95f,
-            )
-        }
-        // Тонкая тёмная виньетка сверху для глубины
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color.Transparent, Color(0x66000000)),
-                    center = Offset(size.width / 2f, size.height / 2f),
-                    radius = size.minDimension * 0.75f,
-                    tileMode = TileMode.Clamp,
-                ),
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val r = minOf(size.width, size.height) / 2f
+            val base = r * 0.42f * breath
+            val orbit = r * 0.28f
+
+            fun blob(colorIdx: Int, angleOffset: Float, radiusMul: Float, orbitMul: Float) {
+                val a = phase * (0.7f + colorIdx * 0.13f) + angleOffset
+                val ox = cx + cos(a) * orbit * orbitMul
+                val oy = cy + sin(a * 1.3f) * orbit * 0.55f * orbitMul
+                drawCircle(
+                    color = paletteCool[colorIdx],
+                    radius = base * radiusMul,
+                    center = Offset(ox, oy),
+                )
+            }
+
+            drawCircle(
+                color = Color(0xFF0F1830),
+                radius = r * 0.95f,
+                center = Offset(cx, cy),
             )
+            blob(0, 0.0f, 1.05f, 0.35f)
+            blob(1, 2.1f, 0.90f, 0.85f)
+            blob(2, 4.2f, 0.78f, 0.95f)
+            blob(3, 1.1f, 0.62f, 0.65f)
         }
     }
 }
+
+private val paletteCool = listOf(
+    Color(0xFFA9C6FF), // холодный голубой
+    Color(0xFFC7B4FF), // сиреневый
+    Color(0xFFE8EEFF), // белёсый лёд
+    Color(0xFFFFB8D6), // редкий розовый акцент
+)
 
 @Composable
 private fun ExpandedContent(
@@ -184,38 +193,79 @@ private fun ExpandedContent(
     inputMode: Boolean,
     inputText: String,
     onInputChange: (String) -> Unit,
+    onInputSubmit: () -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 22.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.Center,
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
     ) {
-        if (inputMode) {
-            BasicTextField(
-                value = inputText,
-                onValueChange = onInputChange,
-                textStyle = TextStyle(
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White,
-                    letterSpacing = (-0.1).sp,
-                    lineHeight = 22.sp,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
-        } else {
-            Text(
-                text = transcript.ifEmpty { " " },
-                style = TextStyle(
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White,
-                    letterSpacing = (-0.1).sp,
-                    lineHeight = 22.sp,
-                ),
-                maxLines = 6,
-            )
+        Text(
+            text = transcript.ifEmpty { " " },
+            style = TextStyle(
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White,
+                letterSpacing = (-0.1).sp,
+                lineHeight = 22.sp,
+            ),
+            maxLines = 5,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF1B1B1F))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ) {
+                BasicTextField(
+                    value = inputText,
+                    onValueChange = onInputChange,
+                    textStyle = TextStyle(
+                        fontSize = 14.sp,
+                        color = Color.White,
+                        letterSpacing = (-0.1).sp,
+                    ),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    decorationBox = { inner ->
+                        if (inputText.isEmpty()) {
+                            Text(
+                                "напиши…",
+                                style = TextStyle(fontSize = 14.sp, color = Color(0xFF6A6A70)),
+                            )
+                        }
+                        inner()
+                    },
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .clickable { onInputSubmit() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "↑",
+                    style = TextStyle(
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0A0A0A),
+                    )
+                )
+            }
         }
     }
 }
