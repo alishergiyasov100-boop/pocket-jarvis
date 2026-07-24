@@ -97,7 +97,7 @@ fun JarvisOverlay(
                 .clip(RoundedCornerShape(corner))
                 .background(Color(0xFF0A0A0A))
                 .pointerInput(Unit) {
-                    val decay = splineBasedDecay<Offset>(this)
+                    val decay = exponentialDecay<Offset>(frictionMultiplier = 1.1f)
                     val tracker = VelocityTracker()
                     detectDragGestures(
                         onDragStart = {
