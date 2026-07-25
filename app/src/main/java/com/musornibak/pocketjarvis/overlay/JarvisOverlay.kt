@@ -1,9 +1,5 @@
 package com.musornibak.pocketjarvis.overlay
 
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.RenderEffect
-import android.graphics.Shader
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -24,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -187,9 +182,9 @@ fun JarvisOverlay(
                 },
         ) {
             if (state != JarvisState.Idle) {
-                MetaballLayer(
+                ArcReactorCore(
                     modifier = Modifier.fillMaxSize(),
-                    intense = state == JarvisState.Speaking || state == JarvisState.Thinking,
+                    state = state,
                     slosh = slosh,
                 )
             }
@@ -215,112 +210,147 @@ fun JarvisOverlay(
 }
 
 /**
- * Настоящий metaball через RenderEffect: чистый blur + alpha-threshold.
- * Классический gooey-трюк, но нативно в RenderNode → 60fps.
- *
- * `slosh` — offset жидкости внутри контейнера (для inertia при drag/throw).
+ * JARVIS arc-reactor HUD: 3 концентрических кольца вращаются в разные стороны,
+ * центральное ядро дышит/пульсирует, при разговоре — ripple волны.
+ * Цвета — cyan+white glow (Iron Man palette).
  */
 @Composable
-private fun MetaballLayer(modifier: Modifier, intense: Boolean, slosh: Offset) {
-    val t = rememberInfiniteTransition(label = "meta")
-    val speed = if (intense) 1.4f else 0.75f
+private fun ArcReactorCore(modifier: Modifier, state: JarvisState, slosh: Offset) {
+    val t = rememberInfiniteTransition(label = "reactor")
 
-    val phase by t.animateFloat(
-        initialValue = 0f,
-        targetValue = (Math.PI * 2).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween((3800 / speed).toInt(), easing = LinearEasing),
-        ),
-        label = "phase",
+    val outerAngle by t.animateFloat(
+        0f, 360f,
+        infiniteRepeatable(tween(9000, easing = LinearEasing)),
+        label = "outer",
     )
-    val wobble by t.animateFloat(
-        initialValue = 0f,
-        targetValue = (Math.PI * 2).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(2400, easing = LinearEasing),
-        ),
-        label = "wobble",
+    val midAngle by t.animateFloat(
+        360f, 0f,
+        infiniteRepeatable(tween(6000, easing = LinearEasing)),
+        label = "mid",
     )
-    // индивидуальные breath — каждая капля дышит своим темпом
-    val breaths = List(6) { idx ->
+    val innerAngle by t.animateFloat(
+        0f, 360f,
+        infiniteRepeatable(tween(if (state == JarvisState.Thinking) 1400 else 4200, easing = LinearEasing)),
+        label = "inner",
+    )
+    val pulse by t.animateFloat(
+        0.82f, 1.08f,
+        infiniteRepeatable(
+            tween(if (state == JarvisState.Listening) 620 else 1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulse",
+    )
+    val ripples = List(3) { i ->
         t.animateFloat(
-            initialValue = 0.72f,
-            targetValue = 1.18f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(950 + idx * 220, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse,
+            0f, 1f,
+            infiniteRepeatable(
+                tween(2200, easing = LinearEasing, delayMillis = i * 730),
             ),
-            label = "b$idx",
+            label = "rip$i",
         )
     }
 
     val sloshX by animateFloatAsState(
-        slosh.x, spring(dampingRatio = 0.38f, stiffness = 120f), label = "sx",
+        slosh.x, spring(dampingRatio = 0.4f, stiffness = 130f), label = "sx",
     )
     val sloshY by animateFloatAsState(
-        slosh.y, spring(dampingRatio = 0.38f, stiffness = 120f), label = "sy",
+        slosh.y, spring(dampingRatio = 0.4f, stiffness = 130f), label = "sy",
     )
 
-    val gooeyEffect = remember {
-        val m = ColorMatrix(
-            floatArrayOf(
-                1f, 0f, 0f, 0f, 0f,
-                0f, 1f, 0f, 0f, 0f,
-                0f, 0f, 1f, 0f, 0f,
-                0f, 0f, 0f, 22f, -8f * 255f,
-            )
-        )
-        val filter = ColorMatrixColorFilter(m)
-        RenderEffect.createChainEffect(
-            RenderEffect.createColorFilterEffect(filter),
-            RenderEffect.createBlurEffect(28f, 28f, Shader.TileMode.DECAL),
-        ).asComposeRenderEffect()
-    }
+    val cyan = Color(0xFF00E5FF)
+    val cyanDim = Color(0xFF0091A8)
+    val glow = Color(0xFFB2F5FF)
 
-    Box(
-        modifier = modifier
-            .padding(4.dp)
-            .graphicsLayer { renderEffect = gooeyEffect },
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val cx = size.width / 2f
-            val cy = size.height / 2f
-            val r = minOf(size.width, size.height) / 2f
-            val orbit = r * 0.34f
+    Canvas(modifier = modifier) {
+        val cx = size.width / 2f + sloshX
+        val cy = size.height / 2f + sloshY
+        val r = minOf(size.width, size.height) / 2f - 6.dp.toPx()
 
-            fun blob(idx: Int, angleOffset: Float, orbitMul: Float, speedMul: Float) {
-                val a = phase * speedMul + angleOffset
-                val wob = cos(wobble * 1.7f + idx * 0.9f) * r * 0.06f
-                val ox = cx + cos(a) * orbit * orbitMul + sin(wobble + idx) * r * 0.08f + sloshX
-                val oy = cy + sin(a * 1.15f) * orbit * 0.65f * orbitMul + cos(wobble * 0.8f + idx) * r * 0.06f + sloshY
+        // ripple волны при Speaking
+        if (state == JarvisState.Speaking) {
+            ripples.forEach { rp ->
+                val p = rp.value
                 drawCircle(
-                    color = paletteCool[idx % paletteCool.size],
-                    radius = (r * 0.36f * breaths[idx].value) + wob,
-                    center = Offset(ox, oy),
+                    color = cyan.copy(alpha = (1f - p) * 0.55f),
+                    radius = r * (0.28f + p * 0.85f),
+                    center = Offset(cx, cy),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.4.dp.toPx()),
                 )
             }
-
-            drawCircle(
-                color = Color(0xFF0F1830),
-                radius = r * 0.98f,
-                center = Offset(cx, cy),
-            )
-            blob(0, 0.0f, 0.30f, 0.85f)
-            blob(1, 2.1f, 0.85f, 1.10f)
-            blob(2, 4.2f, 0.95f, 0.70f)
-            blob(3, 1.1f, 0.65f, 1.35f)
-            blob(4, 3.5f, 0.55f, 0.95f)
-            blob(5, 5.7f, 0.75f, 1.20f)
         }
+
+        // внешнее кольцо: 24 tick-марки
+        val outerR = r * 0.92f
+        for (i in 0 until 24) {
+            val a = Math.toRadians((i * 15f + outerAngle).toDouble())
+            val long = i % 3 == 0
+            val len = if (long) 10.dp.toPx() else 5.dp.toPx()
+            val x1 = cx + cos(a).toFloat() * outerR
+            val y1 = cy + sin(a).toFloat() * outerR
+            val x2 = cx + cos(a).toFloat() * (outerR - len)
+            val y2 = cy + sin(a).toFloat() * (outerR - len)
+            drawLine(
+                color = if (long) cyan else cyanDim,
+                start = Offset(x1, y1),
+                end = Offset(x2, y2),
+                strokeWidth = 1.3.dp.toPx(),
+            )
+        }
+        drawCircle(
+            color = cyanDim.copy(alpha = 0.6f),
+            radius = outerR,
+            center = Offset(cx, cy),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.7.dp.toPx()),
+        )
+
+        // среднее кольцо: 6 arc-сегментов (runes)
+        val midR = r * 0.68f
+        for (i in 0 until 6) {
+            val startA = i * 60f + midAngle
+            drawArc(
+                color = cyan.copy(alpha = 0.85f),
+                startAngle = startA + 8f,
+                sweepAngle = 44f,
+                useCenter = false,
+                topLeft = Offset(cx - midR, cy - midR),
+                size = androidx.compose.ui.geometry.Size(midR * 2, midR * 2),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.6.dp.toPx()),
+            )
+        }
+
+        // внутреннее кольцо: 3 arc'а (треугольная эмблема reactor'а)
+        val innerR = r * 0.44f
+        for (i in 0 until 3) {
+            val startA = i * 120f + innerAngle
+            drawArc(
+                color = cyan,
+                startAngle = startA + 12f,
+                sweepAngle = 96f,
+                useCenter = false,
+                topLeft = Offset(cx - innerR, cy - innerR),
+                size = androidx.compose.ui.geometry.Size(innerR * 2, innerR * 2),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
+            )
+        }
+
+        // ядро: glow + solid center
+        drawCircle(
+            brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                colors = listOf(glow, cyan.copy(alpha = 0.6f), Color.Transparent),
+                center = Offset(cx, cy),
+                radius = r * 0.42f * pulse,
+            ),
+            radius = r * 0.42f * pulse,
+            center = Offset(cx, cy),
+        )
+        drawCircle(
+            color = Color.White,
+            radius = r * 0.10f * pulse,
+            center = Offset(cx, cy),
+        )
     }
 }
-
-private val paletteCool = listOf(
-    Color(0xFFA9C6FF),
-    Color(0xFFC7B4FF),
-    Color(0xFFE8EEFF),
-    Color(0xFFFFB8D6),
-)
 
 @Composable
 private fun ExpandedContent(
