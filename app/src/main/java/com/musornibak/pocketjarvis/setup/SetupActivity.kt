@@ -160,7 +160,7 @@ private fun SetupScreen(
             )
         )
         Text(
-            "Настройка. Открой один раз — дальше живёт в фоне, будится по Vol+.",
+            "Настройка. Открой один раз — дальше значок висит поверх всего, тап = говоришь.",
             style = TextStyle(fontSize = 14.sp, color = Color(0xFF6E6E73), lineHeight = 20.sp)
         )
 
@@ -192,9 +192,6 @@ private fun SetupScreen(
             ctx.startActivity(
                 Intent(OsSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))
             )
-        }
-        PillButton("Accessibility (для Vol+ wake)") {
-            ctx.startActivity(Intent(OsSettings.ACTION_ACCESSIBILITY_SETTINGS))
         }
 
         Spacer(Modifier.height(8.dp))
