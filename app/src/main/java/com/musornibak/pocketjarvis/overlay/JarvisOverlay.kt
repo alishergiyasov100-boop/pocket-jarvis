@@ -223,6 +223,11 @@ private fun ArcReactorCore(modifier: Modifier, state: JarvisState, slosh: Offset
         infiniteRepeatable(tween(9000, easing = LinearEasing)),
         label = "outer",
     )
+    val microAngle by t.animateFloat(
+        0f, -360f,
+        infiniteRepeatable(tween(4000, easing = LinearEasing)),
+        label = "micro",
+    )
     val midAngle by t.animateFloat(
         360f, 0f,
         infiniteRepeatable(tween(6000, easing = LinearEasing)),
@@ -230,24 +235,51 @@ private fun ArcReactorCore(modifier: Modifier, state: JarvisState, slosh: Offset
     )
     val innerAngle by t.animateFloat(
         0f, 360f,
-        infiniteRepeatable(tween(if (state == JarvisState.Thinking) 1400 else 4200, easing = LinearEasing)),
+        infiniteRepeatable(tween(if (state == JarvisState.Thinking) 1200 else 4200, easing = LinearEasing)),
         label = "inner",
     )
+    val scanAngle by t.animateFloat(
+        0f, 360f,
+        infiniteRepeatable(tween(if (state == JarvisState.Thinking) 1600 else 3400, easing = LinearEasing)),
+        label = "scan",
+    )
+    val wavePhase by t.animateFloat(
+        0f, (Math.PI * 2).toFloat(),
+        infiniteRepeatable(tween(2200, easing = LinearEasing)),
+        label = "wave",
+    )
     val pulse by t.animateFloat(
-        0.82f, 1.08f,
+        0.82f, 1.10f,
         infiniteRepeatable(
-            tween(if (state == JarvisState.Listening) 620 else 1200, easing = FastOutSlowInEasing),
+            tween(if (state == JarvisState.Listening) 560 else 1100, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "pulse",
     )
-    val ripples = List(3) { i ->
+    val bracketBlink by t.animateFloat(
+        0.55f, 1f,
+        infiniteRepeatable(
+            tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "bracket",
+    )
+    val ripples = List(5) { i ->
         t.animateFloat(
             0f, 1f,
             infiniteRepeatable(
-                tween(2200, easing = LinearEasing, delayMillis = i * 730),
+                tween(2000, easing = LinearEasing, delayMillis = i * 400),
             ),
             label = "rip$i",
+        )
+    }
+    val sparks = List(10) { i ->
+        t.animateFloat(
+            0f, 1f,
+            infiniteRepeatable(
+                tween(1800, easing = LinearEasing, delayMillis = i * 180),
+            ),
+            label = "sp$i",
         )
     }
 
@@ -261,51 +293,91 @@ private fun ArcReactorCore(modifier: Modifier, state: JarvisState, slosh: Offset
     val cyan = Color(0xFF00E5FF)
     val cyanDim = Color(0xFF0091A8)
     val glow = Color(0xFFB2F5FF)
+    val white = Color(0xFFFFF8E7)
 
     Canvas(modifier = modifier) {
         val cx = size.width / 2f + sloshX
         val cy = size.height / 2f + sloshY
         val r = minOf(size.width, size.height) / 2f - 6.dp.toPx()
 
-        // ripple волны при Speaking
+        // ripple волны при Speaking (5 слоёв, разные stroke)
         if (state == JarvisState.Speaking) {
-            ripples.forEach { rp ->
+            ripples.forEachIndexed { idx, rp ->
                 val p = rp.value
+                val stroke = (0.9f + (idx % 3) * 0.6f).dp.toPx()
+                val col = if (idx % 2 == 0) cyan else white
                 drawCircle(
-                    color = cyan.copy(alpha = (1f - p) * 0.55f),
-                    radius = r * (0.28f + p * 0.85f),
+                    color = col.copy(alpha = (1f - p) * 0.6f),
+                    radius = r * (0.24f + p * 0.95f),
                     center = Offset(cx, cy),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.4.dp.toPx()),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
                 )
             }
         }
 
-        // внешнее кольцо: 24 tick-марки
-        val outerR = r * 0.92f
+        // ─── самое внешнее микро-кольцо: 60 микро-tick'ов ─────────────────
+        val microR = r * 0.98f
+        for (i in 0 until 60) {
+            val a = Math.toRadians((i * 6f + microAngle).toDouble())
+            val len = 2.dp.toPx()
+            val x1 = cx + cos(a).toFloat() * microR
+            val y1 = cy + sin(a).toFloat() * microR
+            val x2 = cx + cos(a).toFloat() * (microR - len)
+            val y2 = cy + sin(a).toFloat() * (microR - len)
+            drawLine(
+                color = cyanDim.copy(alpha = 0.7f),
+                start = Offset(x1, y1),
+                end = Offset(x2, y2),
+                strokeWidth = 0.8.dp.toPx(),
+            )
+        }
+
+        // ─── внешнее кольцо: 24 tick с бегущей волной яркости ─────────────
+        val outerR = r * 0.90f
         for (i in 0 until 24) {
             val a = Math.toRadians((i * 15f + outerAngle).toDouble())
             val long = i % 3 == 0
             val len = if (long) 10.dp.toPx() else 5.dp.toPx()
+            // бегущая волна яркости
+            val wave = 0.35f + 0.65f * ((sin(wavePhase - i * 0.42f) + 1f) / 2f)
+            val col = (if (long) cyan else cyanDim).copy(alpha = wave)
             val x1 = cx + cos(a).toFloat() * outerR
             val y1 = cy + sin(a).toFloat() * outerR
             val x2 = cx + cos(a).toFloat() * (outerR - len)
             val y2 = cy + sin(a).toFloat() * (outerR - len)
             drawLine(
-                color = if (long) cyan else cyanDim,
+                color = col,
                 start = Offset(x1, y1),
                 end = Offset(x2, y2),
                 strokeWidth = 1.3.dp.toPx(),
             )
         }
         drawCircle(
-            color = cyanDim.copy(alpha = 0.6f),
+            color = cyanDim.copy(alpha = 0.5f),
             radius = outerR,
             center = Offset(cx, cy),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.7.dp.toPx()),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 0.6.dp.toPx()),
         )
 
-        // среднее кольцо: 6 arc-сегментов (runes)
-        val midR = r * 0.68f
+        // ─── scanning ray (радар-луч) ─────────────────────────────────────
+        run {
+            val a = Math.toRadians(scanAngle.toDouble())
+            val ex = cx + cos(a).toFloat() * outerR
+            val ey = cy + sin(a).toFloat() * outerR
+            drawLine(
+                brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                    colors = listOf(cyan.copy(alpha = 0.9f), Color.Transparent),
+                    start = Offset(cx, cy),
+                    end = Offset(ex, ey),
+                ),
+                start = Offset(cx, cy),
+                end = Offset(ex, ey),
+                strokeWidth = 1.6.dp.toPx(),
+            )
+        }
+
+        // ─── среднее кольцо: 6 арок-рун ───────────────────────────────────
+        val midR = r * 0.66f
         for (i in 0 until 6) {
             val startA = i * 60f + midAngle
             drawArc(
@@ -319,8 +391,24 @@ private fun ArcReactorCore(modifier: Modifier, state: JarvisState, slosh: Offset
             )
         }
 
-        // внутреннее кольцо: 3 arc'а (треугольная эмблема reactor'а)
-        val innerR = r * 0.44f
+        // ─── sparks: искры пляшут по орбите ───────────────────────────────
+        val sparkOrbit = r * 0.78f
+        sparks.forEachIndexed { idx, sp ->
+            val p = sp.value
+            val angle = Math.toRadians((idx * 36f + p * 90f).toDouble())
+            val rad = sparkOrbit * (0.65f + 0.35f * p)
+            val alpha = (1f - p) * (1f - p) // ease-out
+            val sx = cx + cos(angle).toFloat() * rad
+            val sy = cy + sin(angle).toFloat() * rad
+            drawCircle(
+                color = white.copy(alpha = alpha * 0.9f),
+                radius = 1.6.dp.toPx() + p * 1.4.dp.toPx(),
+                center = Offset(sx, sy),
+            )
+        }
+
+        // ─── внутреннее кольцо: 3 арки reactor'а ──────────────────────────
+        val innerR = r * 0.42f
         for (i in 0 until 3) {
             val startA = i * 120f + innerAngle
             drawArc(
@@ -334,7 +422,7 @@ private fun ArcReactorCore(modifier: Modifier, state: JarvisState, slosh: Offset
             )
         }
 
-        // ядро: glow + solid center
+        // ─── ядро: glow + solid center ────────────────────────────────────
         drawCircle(
             brush = androidx.compose.ui.graphics.Brush.radialGradient(
                 colors = listOf(glow, cyan.copy(alpha = 0.6f), Color.Transparent),
@@ -349,6 +437,32 @@ private fun ArcReactorCore(modifier: Modifier, state: JarvisState, slosh: Offset
             radius = r * 0.10f * pulse,
             center = Offset(cx, cy),
         )
+
+        // ─── corner brackets (HUD-скобки в 4 углах) ───────────────────────
+        val br = size.width.coerceAtMost(size.height) * 0.42f
+        val bLen = 8.dp.toPx()
+        val bStroke = 1.5.dp.toPx()
+        val bCol = white.copy(alpha = bracketBlink * 0.85f)
+        val corners = listOf(
+            Offset(cx - br, cy - br) to Pair(1f, 1f),   // top-left
+            Offset(cx + br, cy - br) to Pair(-1f, 1f),  // top-right
+            Offset(cx - br, cy + br) to Pair(1f, -1f),  // bottom-left
+            Offset(cx + br, cy + br) to Pair(-1f, -1f), // bottom-right
+        )
+        corners.forEach { (o, dir) ->
+            drawLine(
+                color = bCol,
+                start = o,
+                end = Offset(o.x + dir.first * bLen, o.y),
+                strokeWidth = bStroke,
+            )
+            drawLine(
+                color = bCol,
+                start = o,
+                end = Offset(o.x, o.y + dir.second * bLen),
+                strokeWidth = bStroke,
+            )
+        }
     }
 }
 
