@@ -30,6 +30,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.lifecycle.lifecycleScope
+import com.musornibak.pocketjarvis.BuildConfig
 import com.musornibak.pocketjarvis.data.Keys
 import com.musornibak.pocketjarvis.data.Settings
 import com.musornibak.pocketjarvis.overlay.JarvisOverlay
@@ -116,7 +117,7 @@ private fun SetupScreen() {
         osaUrl = settings.get(Keys.OSA_URL).first()
         osaToken = settings.get(Keys.OSA_TOKEN).first()
         model = settings.get(Keys.OSA_MODEL, "claude-sonnet-5").first()
-        elevenKey = settings.get(Keys.ELEVEN_KEY).first()
+        elevenKey = settings.get(Keys.ELEVEN_KEY, BuildConfig.ELEVEN_KEY_DEFAULT).first()
         elevenVoice = settings.get(Keys.ELEVEN_VOICE).first()
         loaded = true
     }

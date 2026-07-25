@@ -28,6 +28,8 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build debug APK
+        env:
+          ELEVEN_KEY: ${{ secrets.ELEVEN_KEY }}
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload debug APK
