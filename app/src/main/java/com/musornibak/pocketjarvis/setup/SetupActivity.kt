@@ -1,10 +1,16 @@
 package com.musornibak.pocketjarvis.setup
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings as OsSettings
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.musornibak.pocketjarvis.service.JarvisOverlayService
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,11 +46,22 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class SetupActivity : ComponentActivity() {
+    private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    private val requestNotif = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    private val requestAudio = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             Box(Modifier.fillMaxSize()) {
-                SetupScreen()
+                SetupScreen(
+                    onRequestMic = { requestMic.launch(Manifest.permission.RECORD_AUDIO) },
+                    onRequestNotif = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            requestNotif.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    },
+                )
                 DemoOverlayHost()
             }
         }
@@ -101,7 +118,10 @@ private fun DemoOverlayHost() {
 }
 
 @Composable
-private fun SetupScreen() {
+private fun SetupScreen(
+    onRequestMic: () -> Unit,
+    onRequestNotif: () -> Unit,
+) {
     val ctx = LocalContext.current
     val settings = remember { Settings(ctx) }
     val scope = rememberCoroutineScope()
@@ -166,13 +186,21 @@ private fun SetupScreen() {
         }
 
         Section("Разрешения (по одному)")
-        PillButton("Accessibility (для Vol+ wake)") {
-            ctx.startActivity(Intent(OsSettings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
+        PillButton("Микрофон") { onRequestMic() }
+        PillButton("Уведомления") { onRequestNotif() }
         PillButton("Overlay поверх окон") {
             ctx.startActivity(
                 Intent(OsSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))
             )
+        }
+        PillButton("Accessibility (для Vol+ wake)") {
+            ctx.startActivity(Intent(OsSettings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        PillButton("Запустить JARVIS") {
+            ContextCompat.startForegroundService(ctx, JarvisOverlayService.startIntent(ctx))
         }
     }
 }
