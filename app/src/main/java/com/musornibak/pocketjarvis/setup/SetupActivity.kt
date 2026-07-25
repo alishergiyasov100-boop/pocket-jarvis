@@ -202,6 +202,18 @@ private fun SetupScreen(
         PillButton("Запустить JARVIS") {
             ContextCompat.startForegroundService(ctx, JarvisOverlayService.startIntent(ctx))
         }
+
+        var crashText by remember { mutableStateOf<String?>(null) }
+        PillButton("Показать последний сбой") {
+            val f = java.io.File(ctx.filesDir, "last_crash.txt")
+            crashText = if (f.exists()) f.readText() else "нет краша"
+        }
+        crashText?.let {
+            Text(
+                it,
+                style = TextStyle(fontSize = 11.sp, color = Color(0xFFB00020), fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+            )
+        }
     }
 }
 

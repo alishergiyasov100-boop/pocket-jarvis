@@ -1,16 +1,21 @@
 package com.musornibak.pocketjarvis.service
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings as OsSettings
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
@@ -62,8 +67,23 @@ class JarvisOverlayService : LifecycleService(),
         savedStateController.performRestore(null)
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         startForegroundInternal()
-        addOverlay()
-        startHotword()
+
+        if (!OsSettings.canDrawOverlays(this)) {
+            Toast.makeText(this, "Нет разрешения Overlay — открой Setup и включи", Toast.LENGTH_LONG).show()
+            stopSelf()
+            return
+        }
+        runCatching { addOverlay() }.onFailure {
+            Toast.makeText(this, "Overlay не поднялся: ${it.message?.take(80)}", Toast.LENGTH_LONG).show()
+            stopSelf()
+            return
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            runCatching { startHotword() }
+        } else {
+            Toast.makeText(this, "Нет микрофона — hotword выключен, но Vol+ работает", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -143,12 +163,18 @@ class JarvisOverlayService : LifecycleService(),
     }
 
     private fun triggerWake() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Разреши микрофон в настройках", Toast.LENGTH_SHORT).show()
+            return
+        }
         currentJob?.cancel()
         hotword?.stop()
         currentJob = lifecycleScope.launch {
-            runPipeline()
+            runCatching { runPipeline() }.onFailure {
+                transcriptVar.value = "Ошибка: ${it.message?.take(120)}"
+            }
             hotword = HotwordListener(this@JarvisOverlayService) { triggerWake() }
-                .also { it.start() }
+                .also { runCatching { it.start() } }
         }
     }
 
