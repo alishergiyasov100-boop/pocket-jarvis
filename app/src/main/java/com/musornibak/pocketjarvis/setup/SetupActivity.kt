@@ -200,7 +200,13 @@ private fun SetupScreen(
         Spacer(Modifier.height(8.dp))
 
         PillButton("Запустить JARVIS") {
-            ContextCompat.startForegroundService(ctx, JarvisOverlayService.startIntent(ctx))
+            val micOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            val overlayOk = OsSettings.canDrawOverlays(ctx)
+            when {
+                !micOk -> android.widget.Toast.makeText(ctx, "Сначала разреши Микрофон", android.widget.Toast.LENGTH_LONG).show()
+                !overlayOk -> android.widget.Toast.makeText(ctx, "Сначала разреши Overlay поверх окон", android.widget.Toast.LENGTH_LONG).show()
+                else -> ContextCompat.startForegroundService(ctx, JarvisOverlayService.startIntent(ctx))
+            }
         }
 
         var crashText by remember { mutableStateOf<String?>(null) }

@@ -66,10 +66,21 @@ class JarvisOverlayService : LifecycleService(),
         savedStateController.performAttach()
         savedStateController.performRestore(null)
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        startForegroundInternal()
 
+        val hasMic = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (!hasMic) {
+            Toast.makeText(this, "Сначала разреши микрофон в Setup", Toast.LENGTH_LONG).show()
+            stopSelf()
+            return
+        }
         if (!OsSettings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Нет разрешения Overlay — открой Setup и включи", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Сначала разреши Overlay в Setup", Toast.LENGTH_LONG).show()
+            stopSelf()
+            return
+        }
+
+        runCatching { startForegroundInternal() }.onFailure {
+            Toast.makeText(this, "FG-сервис не стартовал: ${it.message?.take(80)}", Toast.LENGTH_LONG).show()
             stopSelf()
             return
         }
@@ -78,12 +89,7 @@ class JarvisOverlayService : LifecycleService(),
             stopSelf()
             return
         }
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            runCatching { startHotword() }
-        } else {
-            Toast.makeText(this, "Нет микрофона — hotword выключен, но Vol+ работает", Toast.LENGTH_LONG).show()
-        }
+        runCatching { startHotword() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
