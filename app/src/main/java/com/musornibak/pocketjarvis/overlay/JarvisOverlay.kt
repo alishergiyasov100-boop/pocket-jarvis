@@ -84,7 +84,6 @@ fun JarvisOverlay(
 
     Box(
         modifier = Modifier
-            .fillMaxWidth()
             .padding(top = 12.dp),
         contentAlignment = Alignment.TopCenter,
     ) {
