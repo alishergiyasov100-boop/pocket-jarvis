@@ -37,7 +37,6 @@ import com.musornibak.pocketjarvis.llm.OsaClient
 import com.musornibak.pocketjarvis.overlay.JarvisOverlay
 import com.musornibak.pocketjarvis.overlay.JarvisState
 import com.musornibak.pocketjarvis.voice.ElevenLabsTts
-import com.musornibak.pocketjarvis.voice.HotwordListener
 import com.musornibak.pocketjarvis.voice.captureOnce
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
@@ -58,7 +57,6 @@ class JarvisOverlayService : LifecycleService(),
     private val stateVar = mutableStateOf(JarvisState.Idle)
     private val transcriptVar = mutableStateOf("")
 
-    private var hotword: HotwordListener? = null
     private var currentJob: Job? = null
 
     override fun onCreate() {
@@ -89,7 +87,6 @@ class JarvisOverlayService : LifecycleService(),
             stopSelf()
             return
         }
-        runCatching { startHotword() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -101,7 +98,6 @@ class JarvisOverlayService : LifecycleService(),
     }
 
     override fun onDestroy() {
-        hotword?.stop()
         overlayView?.let { runCatching { wm.removeView(it) } }
         overlayView = null
         super.onDestroy()
@@ -164,23 +160,16 @@ class JarvisOverlayService : LifecycleService(),
         overlayView = view
     }
 
-    private fun startHotword() {
-        hotword = HotwordListener(this) { triggerWake() }.also { it.start() }
-    }
-
     private fun triggerWake() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(this, "Разреши микрофон в настройках", Toast.LENGTH_SHORT).show()
             return
         }
-        currentJob?.cancel()
-        hotword?.stop()
+        if (currentJob?.isActive == true) return
         currentJob = lifecycleScope.launch {
             runCatching { runPipeline() }.onFailure {
                 transcriptVar.value = "Ошибка: ${it.message?.take(120)}"
             }
-            hotword = HotwordListener(this@JarvisOverlayService) { triggerWake() }
-                .also { runCatching { it.start() } }
         }
     }
 
