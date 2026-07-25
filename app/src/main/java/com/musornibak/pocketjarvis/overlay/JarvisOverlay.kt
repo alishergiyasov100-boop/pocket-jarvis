@@ -13,6 +13,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -42,9 +44,12 @@ fun JarvisOverlay(
     transcript: String,
     inputMode: Boolean,
     inputText: String,
+    voiceOn: Boolean = true,
+    onIslandTap: () -> Unit = {},
     onInputChange: (String) -> Unit,
     onInputSubmit: () -> Unit,
     onMicPress: () -> Unit = {},
+    onVoiceToggle: () -> Unit = {},
 ) {
     val expanded = state == JarvisState.Speaking || inputMode || transcript.isNotEmpty()
 
@@ -118,7 +123,7 @@ fun JarvisOverlay(
                 .clip(RoundedCornerShape(corner))
                 .background(Color(0xFF0A0A0A))
                 .pointerInput("tap") {
-                    detectTapGestures(onTap = { onMicPress() })
+                    detectTapGestures(onTap = { onIslandTap() })
                 }
                 .pointerInput("drag") {
                     val decay = exponentialDecay<Offset>(frictionMultiplier = 0.45f)
@@ -202,9 +207,11 @@ fun JarvisOverlay(
                         transcript = transcript,
                         inputMode = inputMode,
                         inputText = inputText,
+                        voiceOn = voiceOn,
                         onInputChange = onInputChange,
                         onInputSubmit = onInputSubmit,
                         onMicPress = onMicPress,
+                        onVoiceToggle = onVoiceToggle,
                     )
                 }
                 // Idle / Listening / Thinking: только шар (без dots)
@@ -475,9 +482,11 @@ private fun ExpandedContent(
     transcript: String,
     inputMode: Boolean,
     inputText: String,
+    voiceOn: Boolean,
     onInputChange: (String) -> Unit,
     onInputSubmit: () -> Unit,
     onMicPress: () -> Unit,
+    onVoiceToggle: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -546,6 +555,22 @@ private fun ExpandedContent(
                     imageVector = Icons.Filled.Mic,
                     contentDescription = "voice",
                     tint = Color.White,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            // тумблер озвучки (Kuon вкл/выкл)
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(if (voiceOn) Color(0xFF00E5FF) else Color(0xFF1B1B1F))
+                    .clickable { onVoiceToggle() },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (voiceOn) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff,
+                    contentDescription = "voice-toggle",
+                    tint = if (voiceOn) Color(0xFF0A0A0A) else Color.White,
                     modifier = Modifier.size(18.dp),
                 )
             }

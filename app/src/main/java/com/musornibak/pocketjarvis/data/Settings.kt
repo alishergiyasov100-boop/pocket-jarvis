@@ -16,6 +16,7 @@ object Keys {
     val OSA_MODEL = stringPreferencesKey("osa_model")       // claude-sonnet-5
     val ELEVEN_KEY = stringPreferencesKey("eleven_key")
     val ELEVEN_VOICE = stringPreferencesKey("eleven_voice") // voice_id of Kuon
+    val VOICE_ON = stringPreferencesKey("voice_on")         // "1" / "0"
 }
 
 class Settings(private val ctx: Context) {

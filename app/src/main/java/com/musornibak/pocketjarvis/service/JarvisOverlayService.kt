@@ -3,7 +3,6 @@ package com.musornibak.pocketjarvis.service
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -15,11 +14,10 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
-import androidx.core.content.ContextCompat
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
@@ -52,10 +50,13 @@ class JarvisOverlayService : LifecycleService(),
 
     private lateinit var wm: WindowManager
     private var overlayView: View? = null
+    private var overlayParams: WindowManager.LayoutParams? = null
 
-    // reactive state для Compose
     private val stateVar = mutableStateOf(JarvisState.Idle)
     private val transcriptVar = mutableStateOf("")
+    private val inputModeVar = mutableStateOf(false)
+    private val inputTextVar = mutableStateOf("")
+    private val voiceOnVar = mutableStateOf(true)
 
     private var currentJob: Job? = null
 
@@ -87,12 +88,16 @@ class JarvisOverlayService : LifecycleService(),
             stopSelf()
             return
         }
+        lifecycleScope.launch {
+            val v = Settings(this@JarvisOverlayService).get(Keys.VOICE_ON, "1").first()
+            voiceOnVar.value = v != "0"
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACTION_WAKE) {
-            triggerWake()
+            triggerVoice()
         }
         return START_STICKY
     }
@@ -116,7 +121,7 @@ class JarvisOverlayService : LifecycleService(),
         nm.createNotificationChannel(ch)
         val notif = NotificationCompat.Builder(this, CHANNEL)
             .setContentTitle("JARVIS активен")
-            .setContentText("Скажи «Джарвис» или нажми Vol+")
+            .setContentText("Тап по островку — говоришь или пишешь")
             .setSmallIcon(android.R.drawable.ic_lock_silent_mode_off)
             .setOngoing(true)
             .build()
@@ -139,41 +144,100 @@ class JarvisOverlayService : LifecycleService(),
                 JarvisOverlay(
                     state = stateVar.value,
                     transcript = transcriptVar.value,
-                    inputMode = false,
-                    inputText = "",
-                    onInputChange = {},
-                    onInputSubmit = {},
-                    onMicPress = { triggerWake() },
+                    inputMode = inputModeVar.value,
+                    inputText = inputTextVar.value,
+                    voiceOn = voiceOnVar.value,
+                    onIslandTap = { toggleInputMode() },
+                    onMicPress = { closeInputMode(); triggerVoice() },
+                    onInputChange = { inputTextVar.value = it },
+                    onInputSubmit = {
+                        val t = inputTextVar.value.trim()
+                        if (t.isNotEmpty()) {
+                            closeInputMode()
+                            triggerText(t)
+                        }
+                    },
+                    onVoiceToggle = { setVoiceOn(!voiceOnVar.value) },
                 )
             }
         }
-        val lp = WindowManager.LayoutParams(
+        val lp = defaultParams(focusable = false)
+        wm.addView(view, lp)
+        overlayView = view
+        overlayParams = lp
+    }
+
+    private fun defaultParams(focusable: Boolean): WindowManager.LayoutParams {
+        val flags = if (focusable) {
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        } else {
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        }
+        return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            flags,
             PixelFormat.TRANSLUCENT,
         ).apply { gravity = Gravity.TOP }
-        wm.addView(view, lp)
-        overlayView = view
     }
 
-    private fun triggerWake() {
+    private fun applyFocusable(focusable: Boolean) {
+        val v = overlayView ?: return
+        val lp = defaultParams(focusable)
+        overlayParams = lp
+        runCatching { wm.updateViewLayout(v, lp) }
+    }
+
+    private fun toggleInputMode() {
+        if (currentJob?.isActive == true) return
+        val next = !inputModeVar.value
+        inputModeVar.value = next
+        applyFocusable(next)
+        if (!next) inputTextVar.value = ""
+    }
+
+    private fun closeInputMode() {
+        if (inputModeVar.value) {
+            inputModeVar.value = false
+            inputTextVar.value = ""
+            applyFocusable(false)
+        }
+    }
+
+    private fun setVoiceOn(on: Boolean) {
+        voiceOnVar.value = on
+        lifecycleScope.launch {
+            Settings(this@JarvisOverlayService).set(Keys.VOICE_ON, if (on) "1" else "0")
+        }
+    }
+
+    private fun triggerVoice() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(this, "Разреши микрофон в настройках", Toast.LENGTH_SHORT).show()
             return
         }
         if (currentJob?.isActive == true) return
         currentJob = lifecycleScope.launch {
-            runCatching { runPipeline() }.onFailure {
+            runCatching { runPipeline(preText = null) }.onFailure {
                 transcriptVar.value = "Ошибка: ${it.message?.take(120)}"
             }
         }
     }
 
-    private suspend fun runPipeline() {
+    private fun triggerText(text: String) {
+        if (currentJob?.isActive == true) return
+        currentJob = lifecycleScope.launch {
+            runCatching { runPipeline(preText = text) }.onFailure {
+                transcriptVar.value = "Ошибка: ${it.message?.take(120)}"
+            }
+        }
+    }
+
+    private suspend fun runPipeline(preText: String?) {
         val settings = Settings(this)
         val osaUrl = settings.get(Keys.OSA_URL, BuildConfig.OSA_URL_DEFAULT).first()
         val osaToken = settings.get(Keys.OSA_TOKEN, BuildConfig.OSA_TOKEN_DEFAULT).first()
@@ -181,15 +245,21 @@ class JarvisOverlayService : LifecycleService(),
         val elevenKey = settings.get(Keys.ELEVEN_KEY, BuildConfig.ELEVEN_KEY_DEFAULT).first()
         val elevenVoice = settings.get(Keys.ELEVEN_VOICE, BuildConfig.ELEVEN_VOICE_DEFAULT).first()
 
-        stateVar.value = JarvisState.Listening
-        transcriptVar.value = "Слушаю…"
-        val user = captureOnce(this).trim()
-        if (user.isBlank()) {
-            transcriptVar.value = ""
-            stateVar.value = JarvisState.Idle
-            return
+        val user = if (preText != null) {
+            transcriptVar.value = preText
+            preText
+        } else {
+            stateVar.value = JarvisState.Listening
+            transcriptVar.value = "Слушаю…"
+            val u = captureOnce(this).trim()
+            if (u.isBlank()) {
+                transcriptVar.value = ""
+                stateVar.value = JarvisState.Idle
+                return
+            }
+            transcriptVar.value = u
+            u
         }
-        transcriptVar.value = user
 
         stateVar.value = JarvisState.Thinking
         val client = OsaClient(osaUrl, osaToken, model)
@@ -208,7 +278,7 @@ class JarvisOverlayService : LifecycleService(),
         }
 
         val reply = sb.toString().trim()
-        if (reply.isNotEmpty()) {
+        if (reply.isNotEmpty() && voiceOnVar.value) {
             ElevenLabsTts(this, elevenKey, elevenVoice).speak(reply)
         }
         kotlinx.coroutines.delay(1400)
