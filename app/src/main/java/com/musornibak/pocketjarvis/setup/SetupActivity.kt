@@ -114,11 +114,11 @@ private fun SetupScreen() {
     var loaded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        osaUrl = settings.get(Keys.OSA_URL).first()
-        osaToken = settings.get(Keys.OSA_TOKEN).first()
+        osaUrl = settings.get(Keys.OSA_URL, BuildConfig.OSA_URL_DEFAULT).first()
+        osaToken = settings.get(Keys.OSA_TOKEN, BuildConfig.OSA_TOKEN_DEFAULT).first()
         model = settings.get(Keys.OSA_MODEL, "claude-sonnet-5").first()
         elevenKey = settings.get(Keys.ELEVEN_KEY, BuildConfig.ELEVEN_KEY_DEFAULT).first()
-        elevenVoice = settings.get(Keys.ELEVEN_VOICE).first()
+        elevenVoice = settings.get(Keys.ELEVEN_VOICE, BuildConfig.ELEVEN_VOICE_DEFAULT).first()
         loaded = true
     }
 

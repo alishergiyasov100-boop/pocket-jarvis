@@ -20,6 +20,21 @@ android {
             "ELEVEN_KEY_DEFAULT",
             "\"${System.getenv("ELEVEN_KEY") ?: ""}\"",
         )
+        buildConfigField(
+            "String",
+            "ELEVEN_VOICE_DEFAULT",
+            "\"${System.getenv("ELEVEN_VOICE") ?: ""}\"",
+        )
+        buildConfigField(
+            "String",
+            "OSA_URL_DEFAULT",
+            "\"${System.getenv("OSA_URL") ?: ""}\"",
+        )
+        buildConfigField(
+            "String",
+            "OSA_TOKEN_DEFAULT",
+            "\"${System.getenv("OSA_TOKEN") ?: ""}\"",
+        )
     }
 
     buildTypes {
