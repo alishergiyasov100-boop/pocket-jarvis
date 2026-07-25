@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -84,7 +85,7 @@ class OsaClient(
     }.flowOn(Dispatchers.IO)
 
     private fun jsonString(s: String): String =
-        Json.encodeToString(kotlinx.serialization.builtins.serializer<String>(), s)
+        Json.encodeToString(String.serializer(), s)
 
     companion object {
         private const val DEFAULT_SYSTEM =

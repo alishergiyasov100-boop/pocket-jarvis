@@ -5,6 +5,8 @@ import android.media.MediaPlayer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -64,7 +66,5 @@ class ElevenLabsTts(
     }
 
     private fun quote(s: String): String =
-        kotlinx.serialization.json.Json.encodeToString(
-            kotlinx.serialization.builtins.serializer<String>(), s,
-        )
+        Json.encodeToString(String.serializer(), s)
 }
