@@ -77,6 +77,9 @@ fun JarvisOverlay(
     val offsetAnim = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
     val scope = rememberCoroutineScope()
     var slosh by remember { mutableStateOf(Offset.Zero) }
+    // pulse при поглощении Dynamic Island'ом
+    val absorbAnim = remember { Animatable(1f) }
+    val absorbHalo = remember { Animatable(0f) }
 
     Box(
         modifier = Modifier
@@ -84,6 +87,28 @@ fun JarvisOverlay(
             .padding(top = 12.dp),
         contentAlignment = Alignment.TopCenter,
     ) {
+        // halo при поглощении Dynamic Island'ом
+        if (absorbHalo.value > 0.01f) {
+            Canvas(
+                modifier = Modifier
+                    .size((w.value + 60).dp, (h.value + 60).dp),
+            ) {
+                val a = absorbHalo.value
+                drawCircle(
+                    brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFA9C6FF).copy(alpha = 0.55f * a),
+                            Color.Transparent,
+                        ),
+                        center = Offset(size.width / 2f, size.height / 2f),
+                        radius = size.minDimension * (0.35f + 0.4f * (1f - a)),
+                    ),
+                    radius = size.minDimension * 0.7f,
+                    center = Offset(size.width / 2f, size.height / 2f),
+                )
+            }
+        }
+
         Box(
             modifier = Modifier
                 .offset {
@@ -97,8 +122,37 @@ fun JarvisOverlay(
                 .clip(RoundedCornerShape(corner))
                 .background(Color(0xFF0A0A0A))
                 .pointerInput(Unit) {
-                    val decay = exponentialDecay<Offset>(frictionMultiplier = 1.1f)
+                    val decay = exponentialDecay<Offset>(frictionMultiplier = 0.45f)
                     val tracker = VelocityTracker()
+
+                    suspend fun returnAndAbsorb() {
+                        var absorbed = false
+                        offsetAnim.animateTo(
+                            Offset.Zero,
+                            spring(dampingRatio = 0.5f, stiffness = 80f),
+                        ) {
+                            val d = value.getDistance()
+                            if (!absorbed && d < 60f) {
+                                absorbed = true
+                                // жидкость плещет внутрь по направлению обратного движения
+                                val inward = if (d > 0.1f) -value / d * 60f else Offset.Zero
+                                slosh = inward
+                                scope.launch {
+                                    absorbAnim.snapTo(1.18f)
+                                    absorbAnim.animateTo(
+                                        1f,
+                                        spring(dampingRatio = 0.35f, stiffness = 420f),
+                                    )
+                                }
+                                scope.launch {
+                                    absorbHalo.snapTo(1f)
+                                    absorbHalo.animateTo(0f, tween(520))
+                                }
+                            }
+                        }
+                        slosh = Offset.Zero
+                    }
+
                     detectDragGestures(
                         onDragStart = {
                             tracker.resetTracking()
@@ -110,33 +164,26 @@ fun JarvisOverlay(
                             scope.launch {
                                 offsetAnim.snapTo(offsetAnim.value + drag)
                             }
-                            // жидкость отстаёт от контейнера — inertia
-                            slosh = -drag * 0.35f
+                            slosh = -drag * 0.55f
                         },
                         onDragEnd = {
                             val v = tracker.calculateVelocity()
                             val throwVel = Offset(v.x, v.y)
-                            slosh = Offset.Zero
+                            slosh = throwVel * 0.0004f
                             scope.launch {
-                                // бросок с натуральным замедлением
                                 offsetAnim.animateDecay(throwVel, decay)
-                                // затем пружина обратно к Dynamic Island
-                                offsetAnim.animateTo(
-                                    Offset.Zero,
-                                    spring(dampingRatio = 0.6f, stiffness = 180f),
-                                )
+                                returnAndAbsorb()
                             }
                         },
                         onDragCancel = {
                             slosh = Offset.Zero
-                            scope.launch {
-                                offsetAnim.animateTo(
-                                    Offset.Zero,
-                                    spring(dampingRatio = 0.6f, stiffness = 180f),
-                                )
-                            }
+                            scope.launch { returnAndAbsorb() }
                         },
                     )
+                }
+                .graphicsLayer {
+                    scaleX = absorbAnim.value
+                    scaleY = 2f - absorbAnim.value
                 },
         ) {
             if (state != JarvisState.Idle) {
@@ -176,30 +223,42 @@ fun JarvisOverlay(
 @Composable
 private fun MetaballLayer(modifier: Modifier, intense: Boolean, slosh: Offset) {
     val t = rememberInfiniteTransition(label = "meta")
+    val speed = if (intense) 1.4f else 0.75f
+
     val phase by t.animateFloat(
         initialValue = 0f,
         targetValue = (Math.PI * 2).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(if (intense) 3200 else 5400, easing = LinearEasing),
+            animation = tween((3800 / speed).toInt(), easing = LinearEasing),
         ),
         label = "phase",
     )
-    val breath by t.animateFloat(
-        initialValue = 0.86f,
-        targetValue = 1.04f,
+    val wobble by t.animateFloat(
+        initialValue = 0f,
+        targetValue = (Math.PI * 2).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(1700, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
+            animation = tween(2400, easing = LinearEasing),
         ),
-        label = "breath",
+        label = "wobble",
     )
+    // индивидуальные breath — каждая капля дышит своим темпом
+    val breaths = List(6) { idx ->
+        t.animateFloat(
+            initialValue = 0.72f,
+            targetValue = 1.18f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(950 + idx * 220, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "b$idx",
+        )
+    }
 
-    // сглаживаем slosh чтобы жидкость плавно возвращалась
     val sloshX by animateFloatAsState(
-        slosh.x, spring(dampingRatio = 0.45f, stiffness = 140f), label = "sx",
+        slosh.x, spring(dampingRatio = 0.38f, stiffness = 120f), label = "sx",
     )
     val sloshY by animateFloatAsState(
-        slosh.y, spring(dampingRatio = 0.45f, stiffness = 140f), label = "sy",
+        slosh.y, spring(dampingRatio = 0.38f, stiffness = 120f), label = "sy",
     )
 
     val gooeyEffect = remember {
@@ -214,7 +273,7 @@ private fun MetaballLayer(modifier: Modifier, intense: Boolean, slosh: Offset) {
         val filter = ColorMatrixColorFilter(m)
         RenderEffect.createChainEffect(
             RenderEffect.createColorFilterEffect(filter),
-            RenderEffect.createBlurEffect(26f, 26f, Shader.TileMode.DECAL),
+            RenderEffect.createBlurEffect(28f, 28f, Shader.TileMode.DECAL),
         ).asComposeRenderEffect()
     }
 
@@ -227,29 +286,31 @@ private fun MetaballLayer(modifier: Modifier, intense: Boolean, slosh: Offset) {
             val cx = size.width / 2f
             val cy = size.height / 2f
             val r = minOf(size.width, size.height) / 2f
-            val base = r * 0.42f * breath
-            val orbit = r * 0.30f
+            val orbit = r * 0.34f
 
-            fun blob(colorIdx: Int, angleOffset: Float, radiusMul: Float, orbitMul: Float) {
-                val a = phase * (0.7f + colorIdx * 0.13f) + angleOffset
-                val ox = cx + cos(a) * orbit * orbitMul + sloshX
-                val oy = cy + sin(a * 1.3f) * orbit * 0.55f * orbitMul + sloshY
+            fun blob(idx: Int, angleOffset: Float, orbitMul: Float, speedMul: Float) {
+                val a = phase * speedMul + angleOffset
+                val wob = cos(wobble * 1.7f + idx * 0.9f) * r * 0.06f
+                val ox = cx + cos(a) * orbit * orbitMul + sin(wobble + idx) * r * 0.08f + sloshX
+                val oy = cy + sin(a * 1.15f) * orbit * 0.65f * orbitMul + cos(wobble * 0.8f + idx) * r * 0.06f + sloshY
                 drawCircle(
-                    color = paletteCool[colorIdx],
-                    radius = base * radiusMul,
+                    color = paletteCool[idx % paletteCool.size],
+                    radius = (r * 0.36f * breaths[idx].value) + wob,
                     center = Offset(ox, oy),
                 )
             }
 
             drawCircle(
                 color = Color(0xFF0F1830),
-                radius = r * 0.95f,
+                radius = r * 0.98f,
                 center = Offset(cx, cy),
             )
-            blob(0, 0.0f, 1.05f, 0.35f)
-            blob(1, 2.1f, 0.90f, 0.85f)
-            blob(2, 4.2f, 0.78f, 0.95f)
-            blob(3, 1.1f, 0.62f, 0.65f)
+            blob(0, 0.0f, 0.30f, 0.85f)
+            blob(1, 2.1f, 0.85f, 1.10f)
+            blob(2, 4.2f, 0.95f, 0.70f)
+            blob(3, 1.1f, 0.65f, 1.35f)
+            blob(4, 3.5f, 0.55f, 0.95f)
+            blob(5, 5.7f, 0.75f, 1.20f)
         }
     }
 }
