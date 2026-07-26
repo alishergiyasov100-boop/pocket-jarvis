@@ -26,7 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.musornibak.pocketjarvis.service.JarvisOverlayService
+import com.musornibak.pocketjarvis.service.OrionService
 
 class SetupActivity : ComponentActivity() {
     private val requestMic = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -62,7 +62,7 @@ private fun SetupScreen(
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Text(
-            "Haku",
+            "Orion",
             style = TextStyle(
                 fontSize = 42.sp,
                 fontWeight = FontWeight.Bold,
@@ -71,7 +71,7 @@ private fun SetupScreen(
             )
         )
         Text(
-            "Голосовой ассистент. Разреши три штуки и запусти — дальше только голосом.",
+            "Скажи «Орион» — и говори. Или Vol+ / кнопка на наушниках.",
             style = TextStyle(fontSize = 14.sp, color = Color(0xFF6E6E73), lineHeight = 20.sp)
         )
 
@@ -79,24 +79,33 @@ private fun SetupScreen(
 
         PillButton("1. Микрофон") { onRequestMic() }
         PillButton("2. Уведомления") { onRequestNotif() }
-        PillButton("3. Overlay поверх окон") {
-            ctx.startActivity(
-                Intent(OsSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))
-            )
+        PillButton("3. Vol+ через Accessibility (опционально)") {
+            ctx.startActivity(Intent(OsSettings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        PillButton("4. Отключить оптимизацию батареи") {
+            runCatching {
+                ctx.startActivity(
+                    Intent(OsSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:${ctx.packageName}"))
+                )
+            }
         }
 
         Spacer(Modifier.height(20.dp))
 
-        PillButton("Запустить Haku", accent = true) {
-            val micOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-            val overlayOk = OsSettings.canDrawOverlays(ctx)
-            when {
-                !micOk -> android.widget.Toast.makeText(ctx, "Сначала разреши микрофон", android.widget.Toast.LENGTH_LONG).show()
-                !overlayOk -> android.widget.Toast.makeText(ctx, "Сначала разреши Overlay", android.widget.Toast.LENGTH_LONG).show()
-                else -> {
-                    ContextCompat.startForegroundService(ctx, JarvisOverlayService.startIntent(ctx))
-                    android.widget.Toast.makeText(ctx, "Haku на связи. Тап по точке или Vol+.", android.widget.Toast.LENGTH_LONG).show()
-                }
+        PillButton("Запустить Orion", accent = true) {
+            val micOk = ContextCompat.checkSelfPermission(
+                ctx, Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!micOk) {
+                android.widget.Toast.makeText(
+                    ctx, "Сначала разреши микрофон", android.widget.Toast.LENGTH_LONG
+                ).show()
+            } else {
+                ContextCompat.startForegroundService(ctx, OrionService.startIntent(ctx))
+                android.widget.Toast.makeText(
+                    ctx, "Orion слушает. Скажи «Орион».", android.widget.Toast.LENGTH_LONG
+                ).show()
             }
         }
     }

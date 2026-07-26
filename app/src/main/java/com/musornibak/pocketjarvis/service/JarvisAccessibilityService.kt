@@ -17,7 +17,7 @@ class JarvisAccessibilityService : AccessibilityService() {
         if (now - lastTrigger < 800) return true
         lastTrigger = now
         runCatching {
-            ContextCompat.startForegroundService(this, JarvisOverlayService.wakeIntent(this))
+            ContextCompat.startForegroundService(this, OrionService.wakeIntent(this))
         }
         return true
     }

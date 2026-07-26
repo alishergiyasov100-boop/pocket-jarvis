@@ -13,15 +13,13 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
 /**
- * Слои распознавания речи через штатный Google SpeechRecognizer.
- *
- * - Hotword: непрерывный цикл, ищет "джарвис/jarvis" в partial results и триггерит.
- * - Utterance: одноразовая capture до end-of-speech, возвращает распознанный текст.
+ * - Hotword: непрерывный цикл, ищет "орион/orion" в partial results и триггерит.
+ * - Utterance: одноразовая capture до end-of-speech.
  */
 
 private val HOTWORD_PATTERNS = listOf(
-    "джарвис", "жарвис", "джевис", "джарис", "жарвиc",
-    "jarvis", "javis", "jaris",
+    "орион", "ореон", "орлеон", "арион", "орьон", "орьён",
+    "orion", "arion", "orean",
 )
 
 private fun looksLikeHotword(text: String): Boolean {
