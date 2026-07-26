@@ -16,7 +16,6 @@ object Keys {
     val OSA_MODEL = stringPreferencesKey("osa_model")
     val FISH_KEY = stringPreferencesKey("fish_key")
     val FISH_VOICE = stringPreferencesKey("fish_voice")
-    val VOICE_ON = stringPreferencesKey("voice_on")
 }
 
 class Settings(private val ctx: Context) {

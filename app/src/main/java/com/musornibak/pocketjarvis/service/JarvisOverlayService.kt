@@ -50,14 +50,8 @@ class JarvisOverlayService : LifecycleService(),
 
     private lateinit var wm: WindowManager
     private var overlayView: View? = null
-    private var overlayParams: WindowManager.LayoutParams? = null
 
     private val stateVar = mutableStateOf(JarvisState.Idle)
-    private val transcriptVar = mutableStateOf("")
-    private val inputModeVar = mutableStateOf(false)
-    private val inputTextVar = mutableStateOf("")
-    private val voiceOnVar = mutableStateOf(true)
-
     private var currentJob: Job? = null
 
     override fun onCreate() {
@@ -88,17 +82,11 @@ class JarvisOverlayService : LifecycleService(),
             stopSelf()
             return
         }
-        lifecycleScope.launch {
-            val v = Settings(this@JarvisOverlayService).get(Keys.VOICE_ON, "1").first()
-            voiceOnVar.value = v != "0"
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        if (intent?.action == ACTION_WAKE) {
-            triggerVoice()
-        }
+        if (intent?.action == ACTION_WAKE) triggerVoice()
         return START_STICKY
     }
 
@@ -120,8 +108,8 @@ class JarvisOverlayService : LifecycleService(),
         }
         nm.createNotificationChannel(ch)
         val notif = NotificationCompat.Builder(this, CHANNEL)
-            .setContentTitle("Haku активна")
-            .setContentText("Тап по островку — говоришь или пишешь")
+            .setContentTitle("Haku на связи")
+            .setContentText("Vol+ или тап по точке — говоришь")
             .setSmallIcon(android.R.drawable.ic_lock_silent_mode_off)
             .setOngoing(true)
             .build()
@@ -143,78 +131,22 @@ class JarvisOverlayService : LifecycleService(),
             setContent {
                 JarvisOverlay(
                     state = stateVar.value,
-                    transcript = transcriptVar.value,
-                    inputMode = inputModeVar.value,
-                    inputText = inputTextVar.value,
-                    voiceOn = voiceOnVar.value,
-                    onIslandTap = { toggleInputMode() },
-                    onMicPress = { closeInputMode(); triggerVoice() },
-                    onInputChange = { inputTextVar.value = it },
-                    onInputSubmit = {
-                        val t = inputTextVar.value.trim()
-                        if (t.isNotEmpty()) {
-                            closeInputMode()
-                            triggerText(t)
-                        }
-                    },
-                    onVoiceToggle = { setVoiceOn(!voiceOnVar.value) },
+                    onTap = { triggerVoice() },
                 )
             }
         }
-        val lp = defaultParams(focusable = false)
-        wm.addView(view, lp)
-        overlayView = view
-        overlayParams = lp
-    }
-
-    private fun defaultParams(focusable: Boolean): WindowManager.LayoutParams {
-        val flags = if (focusable) {
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-        } else {
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-        }
-        return WindowManager.LayoutParams(
+        val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            flags,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
         ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL }
-    }
-
-    private fun applyFocusable(focusable: Boolean) {
-        val v = overlayView ?: return
-        val lp = defaultParams(focusable)
-        overlayParams = lp
-        runCatching { wm.updateViewLayout(v, lp) }
-    }
-
-    private fun toggleInputMode() {
-        if (currentJob?.isActive == true) return
-        val next = !inputModeVar.value
-        inputModeVar.value = next
-        applyFocusable(next)
-        if (!next) inputTextVar.value = ""
-    }
-
-    private fun closeInputMode() {
-        if (inputModeVar.value) {
-            inputModeVar.value = false
-            inputTextVar.value = ""
-            applyFocusable(false)
-        }
-    }
-
-    private fun setVoiceOn(on: Boolean) {
-        voiceOnVar.value = on
-        lifecycleScope.launch {
-            Settings(this@JarvisOverlayService).set(Keys.VOICE_ON, if (on) "1" else "0")
-        }
+        wm.addView(view, lp)
+        overlayView = view
     }
 
     private fun triggerVoice() {
@@ -224,22 +156,14 @@ class JarvisOverlayService : LifecycleService(),
         }
         if (currentJob?.isActive == true) return
         currentJob = lifecycleScope.launch {
-            runCatching { runPipeline(preText = null) }.onFailure {
-                transcriptVar.value = "Ошибка: ${it.message?.take(120)}"
+            runCatching { runPipeline() }.onFailure {
+                Toast.makeText(this@JarvisOverlayService, "Ошибка: ${it.message?.take(80)}", Toast.LENGTH_SHORT).show()
+                stateVar.value = JarvisState.Idle
             }
         }
     }
 
-    private fun triggerText(text: String) {
-        if (currentJob?.isActive == true) return
-        currentJob = lifecycleScope.launch {
-            runCatching { runPipeline(preText = text) }.onFailure {
-                transcriptVar.value = "Ошибка: ${it.message?.take(120)}"
-            }
-        }
-    }
-
-    private suspend fun runPipeline(preText: String?) {
+    private suspend fun runPipeline() {
         val settings = Settings(this)
         val osaUrl = settings.get(Keys.OSA_URL, BuildConfig.OSA_URL_DEFAULT).first()
         val osaToken = settings.get(Keys.OSA_TOKEN, BuildConfig.OSA_TOKEN_DEFAULT).first()
@@ -247,44 +171,25 @@ class JarvisOverlayService : LifecycleService(),
         val fishKey = settings.get(Keys.FISH_KEY, BuildConfig.FISH_KEY_DEFAULT).first()
         val fishVoice = settings.get(Keys.FISH_VOICE, BuildConfig.FISH_VOICE_DEFAULT).first()
 
-        val user = if (preText != null) {
-            transcriptVar.value = preText
-            preText
-        } else {
-            stateVar.value = JarvisState.Listening
-            transcriptVar.value = "Слушаю…"
-            val u = captureOnce(this).trim()
-            if (u.isBlank()) {
-                transcriptVar.value = ""
-                stateVar.value = JarvisState.Idle
-                return
-            }
-            transcriptVar.value = u
-            u
+        stateVar.value = JarvisState.Listening
+        val user = captureOnce(this).trim()
+        if (user.isBlank()) {
+            stateVar.value = JarvisState.Idle
+            return
         }
 
         stateVar.value = JarvisState.Thinking
         val client = OsaClient(osaUrl, osaToken, model)
         val sb = StringBuilder()
         runCatching {
-            client.stream(user).collect { chunk ->
-                sb.append(chunk)
-                transcriptVar.value = sb.toString()
-                if (stateVar.value != JarvisState.Speaking) {
-                    stateVar.value = JarvisState.Speaking
-                }
-            }
-        }.onFailure { err ->
-            transcriptVar.value = "Ошибка: ${err.message?.take(120)}"
-            stateVar.value = JarvisState.Speaking
+            client.stream(user).collect { chunk -> sb.append(chunk) }
         }
 
         val reply = sb.toString().trim()
-        if (reply.isNotEmpty() && voiceOnVar.value) {
+        if (reply.isNotEmpty()) {
+            stateVar.value = JarvisState.Speaking
             FishAudioTts(this, fishKey, fishVoice).speak(reply)
         }
-        kotlinx.coroutines.delay(1400)
-        transcriptVar.value = ""
         stateVar.value = JarvisState.Idle
     }
 
