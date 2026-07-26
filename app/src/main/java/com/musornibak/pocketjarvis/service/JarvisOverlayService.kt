@@ -34,7 +34,7 @@ import com.musornibak.pocketjarvis.data.Settings
 import com.musornibak.pocketjarvis.llm.OsaClient
 import com.musornibak.pocketjarvis.overlay.JarvisOverlay
 import com.musornibak.pocketjarvis.overlay.JarvisState
-import com.musornibak.pocketjarvis.voice.ElevenLabsTts
+import com.musornibak.pocketjarvis.voice.FishAudioTts
 import com.musornibak.pocketjarvis.voice.captureOnce
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
@@ -243,9 +243,9 @@ class JarvisOverlayService : LifecycleService(),
         val settings = Settings(this)
         val osaUrl = settings.get(Keys.OSA_URL, BuildConfig.OSA_URL_DEFAULT).first()
         val osaToken = settings.get(Keys.OSA_TOKEN, BuildConfig.OSA_TOKEN_DEFAULT).first()
-        val model = settings.get(Keys.OSA_MODEL, "claude-sonnet-5").first()
-        val elevenKey = settings.get(Keys.ELEVEN_KEY, BuildConfig.ELEVEN_KEY_DEFAULT).first()
-        val elevenVoice = settings.get(Keys.ELEVEN_VOICE, BuildConfig.ELEVEN_VOICE_DEFAULT).first()
+        val model = settings.get(Keys.OSA_MODEL, "claude-haiku-4-5").first()
+        val fishKey = settings.get(Keys.FISH_KEY, BuildConfig.FISH_KEY_DEFAULT).first()
+        val fishVoice = settings.get(Keys.FISH_VOICE, BuildConfig.FISH_VOICE_DEFAULT).first()
 
         val user = if (preText != null) {
             transcriptVar.value = preText
@@ -281,7 +281,7 @@ class JarvisOverlayService : LifecycleService(),
 
         val reply = sb.toString().trim()
         if (reply.isNotEmpty() && voiceOnVar.value) {
-            ElevenLabsTts(this, elevenKey, elevenVoice).speak(reply)
+            FishAudioTts(this, fishKey, fishVoice).speak(reply)
         }
         kotlinx.coroutines.delay(1400)
         transcriptVar.value = ""

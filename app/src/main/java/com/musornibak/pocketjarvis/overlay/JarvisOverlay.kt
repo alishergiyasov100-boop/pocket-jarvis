@@ -557,7 +557,7 @@ private fun ExpandedContent(
                     modifier = Modifier.size(18.dp),
                 )
             }
-            // тумблер озвучки (Kuon вкл/выкл)
+            // тумблер озвучки (Haku вкл/выкл)
             Box(
                 modifier = Modifier
                     .size(34.dp)

@@ -128,17 +128,17 @@ private fun SetupScreen(
 
     var osaUrl by remember { mutableStateOf("") }
     var osaToken by remember { mutableStateOf("") }
-    var model by remember { mutableStateOf("claude-sonnet-5") }
-    var elevenKey by remember { mutableStateOf("") }
-    var elevenVoice by remember { mutableStateOf("") }
+    var model by remember { mutableStateOf("claude-haiku-4-5") }
+    var fishKey by remember { mutableStateOf("") }
+    var fishVoice by remember { mutableStateOf("") }
     var loaded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         osaUrl = settings.get(Keys.OSA_URL, BuildConfig.OSA_URL_DEFAULT).first()
         osaToken = settings.get(Keys.OSA_TOKEN, BuildConfig.OSA_TOKEN_DEFAULT).first()
-        model = settings.get(Keys.OSA_MODEL, "claude-sonnet-5").first()
-        elevenKey = settings.get(Keys.ELEVEN_KEY, BuildConfig.ELEVEN_KEY_DEFAULT).first()
-        elevenVoice = settings.get(Keys.ELEVEN_VOICE, BuildConfig.ELEVEN_VOICE_DEFAULT).first()
+        model = settings.get(Keys.OSA_MODEL, "claude-haiku-4-5").first()
+        fishKey = settings.get(Keys.FISH_KEY, BuildConfig.FISH_KEY_DEFAULT).first()
+        fishVoice = settings.get(Keys.FISH_VOICE, BuildConfig.FISH_VOICE_DEFAULT).first()
         loaded = true
     }
 
@@ -151,7 +151,7 @@ private fun SetupScreen(
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Text(
-            "JARVIS",
+            "HAKU",
             style = TextStyle(
                 fontSize = 34.sp,
                 fontWeight = FontWeight.Bold,
@@ -169,9 +169,9 @@ private fun SetupScreen(
         Field("API token", osaToken, isSecret = true) { osaToken = it }
         Field("Model", model) { model = it }
 
-        Section("ElevenLabs (голос)")
-        Field("API key", elevenKey, isSecret = true) { elevenKey = it }
-        Field("Voice ID (Kuon)", elevenVoice) { elevenVoice = it }
+        Section("Fish Audio (голос Haku)")
+        Field("API key", fishKey, isSecret = true) { fishKey = it }
+        Field("Reference ID (пусто = дефолт)", fishVoice) { fishVoice = it }
 
         Spacer(Modifier.height(8.dp))
 
@@ -180,8 +180,8 @@ private fun SetupScreen(
                 settings.set(Keys.OSA_URL, osaUrl.trim())
                 settings.set(Keys.OSA_TOKEN, osaToken.trim())
                 settings.set(Keys.OSA_MODEL, model.trim())
-                settings.set(Keys.ELEVEN_KEY, elevenKey.trim())
-                settings.set(Keys.ELEVEN_VOICE, elevenVoice.trim())
+                settings.set(Keys.FISH_KEY, fishKey.trim())
+                settings.set(Keys.FISH_VOICE, fishVoice.trim())
             }
         }
 

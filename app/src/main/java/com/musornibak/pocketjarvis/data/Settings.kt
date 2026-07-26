@@ -11,12 +11,12 @@ import kotlinx.coroutines.flow.map
 private val Context.ds by preferencesDataStore("jarvis")
 
 object Keys {
-    val OSA_URL = stringPreferencesKey("osa_url")           // e.g. http://10.0.0.5:8000/v1
+    val OSA_URL = stringPreferencesKey("osa_url")
     val OSA_TOKEN = stringPreferencesKey("osa_token")
-    val OSA_MODEL = stringPreferencesKey("osa_model")       // claude-sonnet-5
-    val ELEVEN_KEY = stringPreferencesKey("eleven_key")
-    val ELEVEN_VOICE = stringPreferencesKey("eleven_voice") // voice_id of Kuon
-    val VOICE_ON = stringPreferencesKey("voice_on")         // "1" / "0"
+    val OSA_MODEL = stringPreferencesKey("osa_model")
+    val FISH_KEY = stringPreferencesKey("fish_key")
+    val FISH_VOICE = stringPreferencesKey("fish_voice")
+    val VOICE_ON = stringPreferencesKey("voice_on")
 }
 
 class Settings(private val ctx: Context) {

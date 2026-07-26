@@ -29,8 +29,8 @@ jobs:
 
       - name: Build debug APK
         env:
-          ELEVEN_KEY: ${{ secrets.ELEVEN_KEY }}
-          ELEVEN_VOICE: ${{ secrets.ELEVEN_VOICE }}
+          FISH_KEY: ${{ secrets.FISH_KEY }}
+          FISH_VOICE: ${{ secrets.FISH_VOICE }}
           OSA_URL: ${{ secrets.OSA_URL }}
           OSA_TOKEN: ${{ secrets.OSA_TOKEN }}
         run: ./gradlew assembleDebug --stacktrace

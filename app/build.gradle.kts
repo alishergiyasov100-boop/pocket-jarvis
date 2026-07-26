@@ -17,23 +17,23 @@ android {
         versionName = "0.1.0"
         buildConfigField(
             "String",
-            "ELEVEN_KEY_DEFAULT",
-            "\"${System.getenv("ELEVEN_KEY") ?: ""}\"",
+            "FISH_KEY_DEFAULT",
+            "\"${System.getenv("FISH_KEY") ?: "c43ad30cb9b442d8b5068f80e47d5132"}\"",
         )
         buildConfigField(
             "String",
-            "ELEVEN_VOICE_DEFAULT",
-            "\"${System.getenv("ELEVEN_VOICE") ?: ""}\"",
+            "FISH_VOICE_DEFAULT",
+            "\"${System.getenv("FISH_VOICE") ?: ""}\"",
         )
         buildConfigField(
             "String",
             "OSA_URL_DEFAULT",
-            "\"${System.getenv("OSA_URL") ?: ""}\"",
+            "\"${System.getenv("OSA_URL") ?: "http://127.0.0.1:8770/v1"}\"",
         )
         buildConfigField(
             "String",
             "OSA_TOKEN_DEFAULT",
-            "\"${System.getenv("OSA_TOKEN") ?: ""}\"",
+            "\"${System.getenv("OSA_TOKEN") ?: "sk-osa-9zP2pTw5JqzdUloHA0XLDVQSH8NZkvgI"}\"",
         )
     }
 
