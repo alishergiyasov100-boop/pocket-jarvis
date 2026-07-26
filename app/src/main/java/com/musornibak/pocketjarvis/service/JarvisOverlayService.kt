@@ -115,12 +115,12 @@ class JarvisOverlayService : LifecycleService(),
 
     private fun startForegroundInternal() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        val ch = NotificationChannel(CHANNEL, "JARVIS", NotificationManager.IMPORTANCE_MIN).apply {
+        val ch = NotificationChannel(CHANNEL, "Haku", NotificationManager.IMPORTANCE_MIN).apply {
             setShowBadge(false)
         }
         nm.createNotificationChannel(ch)
         val notif = NotificationCompat.Builder(this, CHANNEL)
-            .setContentTitle("JARVIS активен")
+            .setContentTitle("Haku активна")
             .setContentText("Тап по островку — говоришь или пишешь")
             .setSmallIcon(android.R.drawable.ic_lock_silent_mode_off)
             .setOngoing(true)

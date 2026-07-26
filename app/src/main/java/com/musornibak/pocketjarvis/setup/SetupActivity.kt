@@ -151,7 +151,7 @@ private fun SetupScreen(
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Text(
-            "HAKU",
+            "Haku",
             style = TextStyle(
                 fontSize = 34.sp,
                 fontWeight = FontWeight.Bold,
@@ -196,7 +196,7 @@ private fun SetupScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        PillButton("Запустить JARVIS") {
+        PillButton("Запустить Haku") {
             val micOk = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
             val overlayOk = OsSettings.canDrawOverlays(ctx)
             when {
