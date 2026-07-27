@@ -69,6 +69,7 @@ dependencies {
     implementation("androidx.compose.animation:animation")
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.media:media:1.7.0")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")

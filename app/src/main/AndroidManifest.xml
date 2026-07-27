@@ -48,14 +48,6 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
-        <receiver
-            android:name=".voice.MediaButtonReceiver"
-            android:exported="true">
-            <intent-filter android:priority="1000">
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
-            </intent-filter>
-        </receiver>
-
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"

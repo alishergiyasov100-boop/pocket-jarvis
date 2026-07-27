@@ -6,11 +6,12 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.AudioAttributes
-import android.media.RingtoneManager
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.IBinder
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
+import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
@@ -35,6 +36,7 @@ class OrionService : LifecycleService() {
 
     private var hotword: HotwordListener? = null
     private var pipelineJob: Job? = null
+    private var mediaSession: MediaSessionCompat? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -48,7 +50,46 @@ class OrionService : LifecycleService() {
         }
 
         startForegroundInternal()
+        startMediaSession()
         startHotword()
+    }
+
+    private fun startMediaSession() {
+        mediaSession = MediaSessionCompat(this, "orion").apply {
+            setFlags(
+                MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
+                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+            )
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPlay() { triggerVoice() }
+                override fun onPause() { triggerVoice() }
+                override fun onMediaButtonEvent(intent: Intent): Boolean {
+                    val key = intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+                    if (key?.action == KeyEvent.ACTION_DOWN) {
+                        when (key.keyCode) {
+                            KeyEvent.KEYCODE_HEADSETHOOK,
+                            KeyEvent.KEYCODE_MEDIA_PLAY,
+                            KeyEvent.KEYCODE_MEDIA_PAUSE,
+                            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                                triggerVoice(); return true
+                            }
+                        }
+                    }
+                    return super.onMediaButtonEvent(intent)
+                }
+            })
+            setPlaybackState(
+                PlaybackStateCompat.Builder()
+                    .setActions(
+                        PlaybackStateCompat.ACTION_PLAY or
+                            PlaybackStateCompat.ACTION_PAUSE or
+                            PlaybackStateCompat.ACTION_PLAY_PAUSE
+                    )
+                    .setState(PlaybackStateCompat.STATE_PLAYING, 0, 1f)
+                    .build()
+            )
+            isActive = true
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -60,6 +101,8 @@ class OrionService : LifecycleService() {
     override fun onDestroy() {
         hotword?.stop()
         hotword = null
+        mediaSession?.apply { isActive = false; release() }
+        mediaSession = null
         super.onDestroy()
     }
 
