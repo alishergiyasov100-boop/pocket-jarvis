@@ -27,13 +27,8 @@ android {
         )
         buildConfigField(
             "String",
-            "OSA_URL_DEFAULT",
-            "\"${System.getenv("OSA_URL") ?: "http://127.0.0.1:8770/v1"}\"",
-        )
-        buildConfigField(
-            "String",
-            "OSA_TOKEN_DEFAULT",
-            "\"${System.getenv("OSA_TOKEN") ?: "sk-osa-9zP2pTw5JqzdUloHA0XLDVQSH8NZkvgI"}\"",
+            "ORION_URL_DEFAULT",
+            "\"${System.getenv("ORION_URL") ?: "http://127.0.0.1:7770"}\"",
         )
     }
 

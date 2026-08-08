@@ -19,18 +19,18 @@ import androidx.lifecycle.lifecycleScope
 import com.musornibak.pocketjarvis.BuildConfig
 import com.musornibak.pocketjarvis.data.Keys
 import com.musornibak.pocketjarvis.data.Settings
-import com.musornibak.pocketjarvis.llm.OsaClient
+import com.musornibak.pocketjarvis.llm.OrionClient
 import com.musornibak.pocketjarvis.voice.FishAudioTts
 import com.musornibak.pocketjarvis.voice.HotwordListener
-import com.musornibak.pocketjarvis.voice.captureOnce
+import com.musornibak.pocketjarvis.voice.captureAudio
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Слушает wake-word "Орион" в цикле, при триггере — mic capture → OSA → Fish TTS.
- * Также реагирует на явные wake-интенты (Vol+, BT click).
+ * Loop: wake («Орион» / Vol+ / BT click) → beep → captureAudio (WAV) →
+ * POST orion-brain /voice (whisper + LLM) → Fish TTS → снова hotword.
  */
 class OrionService : LifecycleService() {
 
@@ -143,7 +143,6 @@ class OrionService : LifecycleService() {
         hotword?.stop()
         pipelineJob = lifecycleScope.launch {
             runCatching { runPipeline() }
-            // после ответа — снова в hotword-цикл
             delay(300)
             startHotword()
         }
@@ -151,22 +150,17 @@ class OrionService : LifecycleService() {
 
     private suspend fun runPipeline() {
         val settings = Settings(this)
-        val osaUrl = settings.get(Keys.OSA_URL, BuildConfig.OSA_URL_DEFAULT).first()
-        val osaToken = settings.get(Keys.OSA_TOKEN, BuildConfig.OSA_TOKEN_DEFAULT).first()
-        val model = settings.get(Keys.OSA_MODEL, "claude-haiku-4-5").first()
+        val orionUrl = settings.get(Keys.ORION_URL, BuildConfig.ORION_URL_DEFAULT).first()
         val fishKey = settings.get(Keys.FISH_KEY, BuildConfig.FISH_KEY_DEFAULT).first()
         val fishVoice = settings.get(Keys.FISH_VOICE, BuildConfig.FISH_VOICE_DEFAULT).first()
 
         beep()
 
-        val user = captureOnce(this).trim()
-        if (user.isBlank()) return
+        val wav = captureAudio()
+        if (wav.size <= 44 + 8000) return // ~<0.25s аудио → скипаем (шум)
 
-        val client = OsaClient(osaUrl, osaToken, model)
-        val sb = StringBuilder()
-        runCatching { client.stream(user).collect { chunk -> sb.append(chunk) } }
-
-        val reply = sb.toString().trim()
+        val result = OrionClient(orionUrl).voice(wav, language = "ru")
+        val reply = result.reply.ifBlank { result.error.orEmpty() }
         if (reply.isNotEmpty()) {
             FishAudioTts(this, fishKey, fishVoice).speak(reply)
         }

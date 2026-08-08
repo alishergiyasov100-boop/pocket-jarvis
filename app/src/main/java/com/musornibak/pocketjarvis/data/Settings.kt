@@ -11,9 +11,7 @@ import kotlinx.coroutines.flow.map
 private val Context.ds by preferencesDataStore("jarvis")
 
 object Keys {
-    val OSA_URL = stringPreferencesKey("osa_url")
-    val OSA_TOKEN = stringPreferencesKey("osa_token")
-    val OSA_MODEL = stringPreferencesKey("osa_model")
+    val ORION_URL = stringPreferencesKey("orion_url")
     val FISH_KEY = stringPreferencesKey("fish_key")
     val FISH_VOICE = stringPreferencesKey("fish_voice")
 }

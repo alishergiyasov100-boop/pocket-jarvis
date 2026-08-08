@@ -31,8 +31,7 @@ jobs:
         env:
           FISH_KEY: ${{ secrets.FISH_KEY }}
           FISH_VOICE: ${{ secrets.FISH_VOICE }}
-          OSA_URL: ${{ secrets.OSA_URL }}
-          OSA_TOKEN: ${{ secrets.OSA_TOKEN }}
+          ORION_URL: ${{ secrets.ORION_URL }}
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload debug APK

@@ -6,15 +6,9 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
 
 /**
- * - Hotword: непрерывный цикл, ищет "орион/orion" в partial results и триггерит.
- * - Utterance: одноразовая capture до end-of-speech.
+ * Hotword listener: непрерывный цикл, ищет "орион/orion" в partial results и триггерит.
  */
 
 private val HOTWORD_PATTERNS = listOf(
@@ -87,41 +81,5 @@ class HotwordListener(
         recog?.destroy(); recog = null
         if (!running) return
         android.os.Handler(ctx.mainLooper).postDelayed({ launch() }, 250)
-    }
-}
-
-/** Одноразовое распознавание — возвращает финальный текст (или пустоту). */
-suspend fun captureOnce(ctx: Context): String = withContext(Dispatchers.Main) {
-    suspendCancellableCoroutine { cont ->
-        val r = SpeechRecognizer.createSpeechRecognizer(ctx)
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200)
-        }
-        var resumed = false
-        fun finish(text: String) {
-            if (resumed) return
-            resumed = true
-            runCatching { r.destroy() }
-            cont.resume(text)
-        }
-        r.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onError(error: Int) { finish("") }
-            override fun onResults(results: Bundle?) {
-                val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                finish(list?.firstOrNull().orEmpty())
-            }
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
-        runCatching { r.startListening(intent) }
-        cont.invokeOnCancellation { runCatching { r.destroy() } }
     }
 }
